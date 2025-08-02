@@ -1,5 +1,14 @@
-# save as glyph_em_overlay.py
-# pip install freetype-py pillow
+"""
+Font Hinting Visualization Tool
+
+This script creates SVG visualizations that demonstrate how font hinting affects
+glyph outlines and their bitmap rendering. It overlays original (unhinted) outlines,
+hinted outlines, and bitmap representations to show the differences.
+
+Dependencies: freetype-py, pillow
+Usage: python main.py
+"""
+
 import freetype as ft
 from pathlib import Path
 from io import BytesIO
@@ -23,28 +32,44 @@ _RENDER_MODE = {
 }
 
 def _png_data_uri_from_bitmap(bmp: ft.Bitmap) -> str:
-    """Convert an FT_Bitmap (GRAY or MONO) to a PNG data URI with alpha only."""
+    """
+    Convert a FreeType bitmap to a PNG data URI for embedding in SVG.
+    
+    Handles both grayscale (FT_PIXEL_MODE_GRAY) and monochrome (FT_PIXEL_MODE_MONO) 
+    bitmaps by converting them to RGBA images with transparency based on the 
+    original pixel values.
+    
+    Args:
+        bmp: FreeType bitmap object
+        
+    Returns:
+        Base64-encoded PNG data URI suitable for SVG <image> elements
+    """
     w, h, pitch, mode = bmp.width, bmp.rows, bmp.pitch, bmp.pixel_mode
     if w == 0 or h == 0:
         # empty
         return "data:image/png;base64," + b64encode(b"\x89PNG\r\n\x1a\n").decode("ascii")
 
     if mode == ft.FT_PIXEL_MODE_GRAY:
+        # 8-bit grayscale: each byte represents one pixel's alpha value
         buf = bmp.buffer
         alpha = bytearray(w * h)
         for y in range(h):
             row = buf[y * pitch : y * pitch + w]
             alpha[y * w : (y + 1) * w] = row
     elif mode == ft.FT_PIXEL_MODE_MONO:
+        # 1-bit monochrome: each bit represents one pixel (8 pixels per byte)
         buf = bmp.buffer
         alpha = bytearray(w * h)
         for y in range(h):
             row_off = y * pitch
             for x in range(w):
-                b = buf[row_off + (x >> 3)]
-                alpha[y * w + x] = 255 if (b >> (7 - (x & 7))) & 1 else 0
+                byte_idx = row_off + (x >> 3)  # Which byte contains this pixel
+                bit_idx = 7 - (x & 7)          # Which bit within that byte
+                b = buf[byte_idx]
+                alpha[y * w + x] = 255 if (b >> bit_idx) & 1 else 0
     else:
-        # treat unsupported modes as empty
+        # Unsupported pixel modes default to transparent
         alpha = bytearray([0] * (w * h))
 
     img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
@@ -70,111 +95,161 @@ def glyph_em_overlay(
     bitmap_opacity: float = 1,  # opacity for bitmap layer (0.0 – 1.0)
 ):
     """
-    SVG in EM units:
-      - Original (unscaled, unhinted) glyph + metrics drawn in EM space.
-      - Hinted outline converted back to EM units and overlaid.
-      - FT-rendered bitmap (hinted or unhinted based on use_hinted_bitmap) scaled/translated into EM units.
+    Generate an SVG visualization showing how font hinting affects glyph rendering.
+    
+    Creates a scalable vector graphic in EM coordinate space that overlays:
+    - Original (unhinted) glyph outline in font design units
+    - Hinted outline converted back to EM units for comparison  
+    - Bitmap renderings (from hinted or unhinted outlines) scaled to EM space
+    - Font metrics guides and labels for analysis
+    
+    This allows direct visual comparison of how hinting algorithms modify the 
+    original glyph design to improve rendering at small pixel sizes.
 
     Args:
-        use_hinted_bitmap: If True, bitmap is rendered from hinted outline. 
-                          If False, bitmap is rendered from unhinted outline.
-        layers: Comma-separated list of layers to include. Available layers:
-                - path-original: Original unhinted outline (dashed purple)
-                - path-hinted: Hinted outline (solid black)
+        font_path: Path to the font file (TTF, OTF, etc.)
+        char: Single character to analyze
+        ppem: Pixels per EM - the target rendering size for hinting
+        hinting_target: Hinting algorithm ("normal", "light", "mono", "lcd", "lcd_v")
+        use_hinted_bitmap: Whether bitmap layer uses hinted (True) or unhinted (False) outline
+        layers: Comma-separated list of visualization layers:
+                - path-original: Original unhinted outline (solid black)
+                - path-hinted: Hinted outline (dashed blue)  
                 - bitmap-original: Bitmap from unhinted outline
                 - bitmap-hinted: Bitmap from hinted outline
-                - guides: ascender, descender lines
-                - baseline: Baseline line
-                - bearings: LSB and advance lines
-                - bbox: Bounding box rectangle
-                - labels: Text labels and legend
+                - guides: Ascender/descender lines (gold)
+                - baseline: Baseline reference line (gray)
+                - bearings: Left side bearing and advance lines (blue/green)
+                - bbox: Glyph bounding box (red)
+                - labels: Text annotations and legend
+        label_scale: Size of text labels as fraction of UPEM
+        stroke_main: Outline stroke width as fraction of UPEM
+        stroke_guides: Guide line stroke width as fraction of UPEM  
+        margin_em: SVG margins as fraction of UPEM
+        bitmap_style: How to render bitmap pixels ("image", "rects", "circles")
+        bitmap_opacity: Transparency of bitmap overlay (0.0-1.0)
 
-    All labels/line widths scale with UPEM (stable regardless of ppem).
+    Returns:
+        Dictionary with output file path, metrics, and generation details
+        
+    The output SVG uses EM units throughout, making it resolution-independent
+    while clearly showing the pixel-level effects of hinting at the target PPEM.
     """
+    # Load the font face
     face = ft.Face(font_path)
-    # UPEM (often 2048; note the common value is 2048, not 2024)
+    # Get the font's units per EM (typically 1000, 2048, or 4096)
+    # This is the resolution of the original font design grid
     upem = face.units_per_EM
 
-    # Parse layers
+    # Parse the comma-separated layers list into a set for fast lookup
     layer_set = set(layer.strip() for layer in layers.split(",") if layer.strip())
     
-    # Determine what bitmaps we need to generate
+    # Determine which bitmap renderings we need to generate based on requested layers
+    # This optimization avoids unnecessary bitmap generation for better performance
     need_hinted_bitmap = "bitmap-hinted" in layer_set
     need_unhinted_bitmap = "bitmap-original" in layer_set
     need_any_bitmap = need_hinted_bitmap or need_unhinted_bitmap
 
-    # --- ORIGINAL (EM-space) -----------------------------------------------
-    # Load NO_SCALE|NO_HINTING: outline and metrics in *font units* (EM units).
+    # =================================================================
+    # STEP 1: Load original (unhinted, unscaled) glyph data
+    # =================================================================
+    # Load the glyph without hinting or scaling to get the original design
+    # This gives us the glyph as the font designer intended it
     face.load_char(char, ft.FT_LOAD_NO_HINTING | ft.FT_LOAD_NO_SCALE)
     orig_slot = face.glyph
     orig_outline = orig_slot.outline
-    om = orig_slot.metrics  # EM units here
+    om = orig_slot.metrics  # All values are in font design units (EM units)
 
-    # EM metrics (no /64 needed under NO_SCALE)
-    lsb_em   = float(om.horiBearingX)
-    top_em   = float(om.horiBearingY)
-    width_em = float(om.width)
-    height_em= float(om.height)
-    adv_em   = float(om.horiAdvance)
-    # Face vertical metrics in EM units
-    asc_em   = float(face.ascender)
-    desc_em  = float(face.descender)  # negative
+    # Extract glyph metrics in EM units (no scaling factor needed with NO_SCALE)
+    lsb_em    = float(om.horiBearingX)  # Left side bearing
+    top_em    = float(om.horiBearingY)  # Distance from baseline to top of glyph
+    width_em  = float(om.width)         # Glyph width
+    height_em = float(om.height)        # Glyph height  
+    adv_em    = float(om.horiAdvance)   # Horizontal advance (spacing to next glyph)
+    
+    # Font-wide vertical metrics in EM units
+    asc_em    = float(face.ascender)    # Ascender height (positive)
+    desc_em   = float(face.descender)   # Descender depth (negative)
 
-    # Helpers for EM-space SVG path (y-down flip at write time)
+    # Helper function to convert FreeType outline to SVG path data
+    # Handles coordinate system conversion: FreeType uses Y-up, SVG uses Y-down
     def em_path_from_outline(outline):
+        """Convert FreeType outline to SVG path string in EM coordinates."""
         cmds, open_flag = [], False
+        
         def move_to(p, _):
             nonlocal open_flag
-            if open_flag: cmds.append("Z")
-            cmds.append(f"M {p.x:.3f} {-p.y:.3f}")
+            if open_flag: cmds.append("Z")  # Close previous path
+            cmds.append(f"M {p.x:.3f} {-p.y:.3f}")  # Flip Y coordinate
             open_flag = True
+            
         def line_to(p, _):
             cmds.append(f"L {p.x:.3f} {-p.y:.3f}")
+            
         def conic_to(c, p, _):
+            # Quadratic Bézier curve (TrueType style)
             cmds.append(f"Q {c.x:.3f} {-c.y:.3f} {p.x:.3f} {-p.y:.3f}")
+            
         def cubic_to(c1, c2, p, _):
+            # Cubic Bézier curve (PostScript/OpenType style)
             cmds.append(
                 "C "
                 f"{c1.x:.3f} {-c1.y:.3f} "
                 f"{c2.x:.3f} {-c2.y:.3f} "
                 f"{p.x:.3f} {-p.y:.3f}"
             )
+            
+        # Decompose the outline into path commands
         outline.decompose(move_to=move_to, line_to=line_to, conic_to=conic_to, cubic_to=cubic_to)
-        if open_flag: cmds.append("Z")
+        if open_flag: cmds.append("Z")  # Close final path
         return " ".join(cmds)
 
     orig_path_em = em_path_from_outline(orig_outline)
 
-    # --- HINTED (pixel space) -> back to EM --------------------------------
-    # Set pixel size for hinting and bitmap
+    # =================================================================
+    # STEP 2: Load hinted glyph data and convert back to EM units
+    # =================================================================
+    # Set the target pixel size - this is where hinting becomes active
     face.set_pixel_sizes(ppem, 0)
-    # Load hinted scalable outline (26.6 pixel units in glyph.outline)
+    
+    # Load the glyph with hinting enabled to see how it's modified for pixel rendering
+    # The outline coordinates will be in 26.6 fixed-point pixel units
     flags_hinted = ft.FT_LOAD_DEFAULT | ft.FT_LOAD_NO_BITMAP | _LOAD_TARGET[hinting_target]
     face.load_char(char, flags_hinted)
     hinted_slot = face.glyph
-    hm = hinted_slot.metrics  # 26.6 pixels
+    hm = hinted_slot.metrics  # Metrics in 26.6 fixed-point pixel units
+    
+    # Get the actual pixels-per-EM that FreeType is using (may differ slightly from requested)
     x_ppem = face.size.x_ppem
     y_ppem = face.size.y_ppem
 
-    # Pixel->EM conversion factors
-    # px_float * (UPEM / ppem) => EM
-    def px_to_em_x(px26_6): return (px26_6 / 64.0) * (upem / float(x_ppem))
-    def px_to_em_y(px26_6): return (px26_6 / 64.0) * (upem / float(y_ppem))
+    # Conversion functions: 26.6 fixed-point pixels → EM units
+    # This allows us to overlay hinted outlines on the original EM-space design
+    def px_to_em_x(px26_6): 
+        return (px26_6 / 64.0) * (upem / float(x_ppem))
+    def px_to_em_y(px26_6): 
+        return (px26_6 / 64.0) * (upem / float(y_ppem))
 
     def hinted_em_path(outline):
+        """Convert hinted outline from pixel coordinates back to EM coordinates."""
         cmds, open_flag = [], False
+        
         def move_to(p, _):
             nonlocal open_flag
             if open_flag: cmds.append("Z")
+            # Convert pixel coordinates to EM and flip Y
             cmds.append(f"M {px_to_em_x(p.x):.3f} {-px_to_em_y(p.y):.3f}")
             open_flag = True
+            
         def line_to(p, _):
             cmds.append(f"L {px_to_em_x(p.x):.3f} {-px_to_em_y(p.y):.3f}")
+            
         def conic_to(c, p, _):
             cmds.append(
                 f"Q {px_to_em_x(c.x):.3f} {-px_to_em_y(c.y):.3f} "
                 f"{px_to_em_x(p.x):.3f} {-px_to_em_y(p.y):.3f}"
             )
+            
         def cubic_to(c1, c2, p, _):
             cmds.append(
                 "C "
@@ -182,45 +257,51 @@ def glyph_em_overlay(
                 f"{px_to_em_x(c2.x):.3f} {-px_to_em_y(c2.y):.3f} "
                 f"{px_to_em_x(p.x):.3f} {-px_to_em_y(p.y):.3f}"
             )
+            
         outline.decompose(move_to=move_to, line_to=line_to, conic_to=conic_to, cubic_to=cubic_to)
         if open_flag: cmds.append("Z")
         return " ".join(cmds)
 
     hinted_path_em = hinted_em_path(hinted_slot.outline)
 
-    # --- FT bitmap (hinted and/or unhinted), scaled & aligned in EM --------
+    # =================================================================
+    # STEP 3: Generate bitmap renderings and convert to EM coordinates
+    # =================================================================
     render_mode = _RENDER_MODE[hinting_target]
-    bitmaps = {}
+    bitmaps = {}  # Store bitmap data for each type we generate
     
     if need_hinted_bitmap:
-        # Generate hinted bitmap
+        # Generate bitmap from the hinted outline (already loaded above)
         hinted_slot.render(render_mode)
         hinted_bmp = hinted_slot.bitmap
-        hinted_bmp_left_px = hinted_slot.bitmap_left
+        hinted_bmp_left_px = hinted_slot.bitmap_left  # Bitmap position relative to origin
         hinted_bmp_top_px  = hinted_slot.bitmap_top
-        # Hinted bearings in *pixel* units (floats)
-        hinted_lsb_px  = hm.horiBearingX / 64.0
-        hinted_top_px  = hm.horiBearingY / 64.0
         
-        # Align hinted bitmap to hinted bearings
+        # Convert hinted glyph metrics from 26.6 pixels to float pixels
+        hinted_lsb_px  = hm.horiBearingX / 64.0  # Left side bearing in pixels
+        hinted_top_px  = hm.horiBearingY / 64.0  # Top bearing in pixels
+        
+        # Calculate alignment offset: difference between glyph metrics and bitmap position
+        # This accounts for how FreeType positions the bitmap relative to the glyph metrics
         hinted_dx_px = hinted_lsb_px - hinted_bmp_left_px
         hinted_dy_px = hinted_bmp_top_px - hinted_top_px
         hinted_dx_em = hinted_dx_px * (upem / float(x_ppem))
         hinted_dy_em = hinted_dy_px * (upem / float(y_ppem))
         
+        # Store all bitmap data converted to EM coordinates
         bitmaps['hinted'] = {
             'bitmap': hinted_bmp,
-            'img_x_em': hinted_bmp_left_px * (upem / float(x_ppem)),
-            'img_y_em': -hinted_bmp_top_px * (upem / float(y_ppem)),
-            'img_w_em': hinted_bmp.width * (upem / float(x_ppem)),
-            'img_h_em': hinted_bmp.rows * (upem / float(y_ppem)),
-            'dx_em': hinted_dx_em,
-            'dy_em': hinted_dy_em,
-            'png_uri': _png_data_uri_from_bitmap(hinted_bmp)
+            'img_x_em': hinted_bmp_left_px * (upem / float(x_ppem)),   # Bitmap left edge
+            'img_y_em': -hinted_bmp_top_px * (upem / float(y_ppem)),   # Bitmap top edge (Y-flipped)
+            'img_w_em': hinted_bmp.width * (upem / float(x_ppem)),     # Bitmap width
+            'img_h_em': hinted_bmp.rows * (upem / float(y_ppem)),      # Bitmap height
+            'dx_em': hinted_dx_em,  # Horizontal alignment offset
+            'dy_em': hinted_dy_em,  # Vertical alignment offset
+            'png_uri': _png_data_uri_from_bitmap(hinted_bmp)  # Base64 PNG for SVG embedding
         }
     
     if need_unhinted_bitmap:
-        # Generate unhinted bitmap at the same pixel size
+        # Generate bitmap from unhinted outline at the same pixel size for comparison
         flags_unhinted = ft.FT_LOAD_NO_HINTING | ft.FT_LOAD_NO_BITMAP | _LOAD_TARGET[hinting_target]
         face.load_char(char, flags_unhinted)
         unhinted_slot = face.glyph
@@ -229,7 +310,8 @@ def glyph_em_overlay(
         unhinted_bmp_left_px = unhinted_slot.bitmap_left
         unhinted_bmp_top_px  = unhinted_slot.bitmap_top
         
-        # For unhinted bitmap: no compensation needed
+        # For unhinted bitmap, we don't apply bearing compensation
+        # This shows the raw bitmap position as FreeType calculates it
         unhinted_dx_em = 0.0
         unhinted_dy_em = 0.0
         
@@ -244,9 +326,13 @@ def glyph_em_overlay(
             'png_uri': _png_data_uri_from_bitmap(unhinted_bmp)
         }
 
-    # For viewbox calculation, use any available bitmap or fallback to hinted metrics
+    # =================================================================
+    # STEP 4: Calculate SVG viewBox and styling
+    # =================================================================
+    
+    # Determine the overall bounds for the SVG viewBox
+    # Include bitmap extents if any bitmaps were generated
     if bitmaps:
-        # Use the first available bitmap for viewbox calculation
         primary_bitmap = list(bitmaps.values())[0]
         img_left_em = primary_bitmap['img_x_em'] + primary_bitmap['dx_em']
         img_right_em = img_left_em + primary_bitmap['img_w_em']
@@ -254,34 +340,35 @@ def glyph_em_overlay(
         # No bitmaps requested, use zero extents
         img_left_em = img_right_em = 0.0
 
-    # --- ViewBox in EM units (margin relative to UPEM) ----------------------
+    # Calculate SVG viewBox in EM units with margins
     margin = margin_em * upem
-    # Include original metrics (EM) and bitmap extents if any
-    left  = min(0.0, lsb_em, img_left_em) - margin
-    right = max(adv_em, lsb_em + width_em, img_right_em) + margin
-    top_vb    = -(asc_em + margin)     # SVG y-down
-    height_vb = (asc_em - desc_em) + 2 * margin
-    width_vb  = right - left
+    left  = min(0.0, lsb_em, img_left_em) - margin      # Leftmost extent
+    right = max(adv_em, lsb_em + width_em, img_right_em) + margin  # Rightmost extent
+    top_vb    = -(asc_em + margin)                       # Top of viewBox (SVG Y-down)
+    height_vb = (asc_em - desc_em) + 2 * margin          # Total height
+    width_vb  = right - left                             # Total width
 
-    # --- Scaled styles in EM units (proportional to UPEM) -------------------
-    fs = label_scale * upem
-    sw_main = stroke_main * upem
-    sw_guid = stroke_guides * upem
-    dash_a = 0.0 * upem
-    dash_b = 0.007 * upem
+    # Scale all visual elements proportionally to UPEM for resolution independence
+    fs = label_scale * upem        # Font size for labels
+    sw_main = stroke_main * upem   # Stroke width for main outlines
+    sw_guid = stroke_guides * upem # Stroke width for guide lines
+    dash_a = 0.0 * upem           # Dash pattern (solid)
+    dash_b = 0.007 * upem         # Dash pattern (gap)
 
-
-    # --- styles for paths 
-    path_original_style = f'stroke="#000" stroke-width="{sw_main:.3f}"'
-    path_hinted_style = f'stroke="#0054a2" stroke-width="{sw_main*1.5:.3f}" stroke-dasharray="{dash_a:.3f} {dash_b:.3f}" stroke-linecap="round"'
+    # Define visual styles for different path types
+    path_original_style = f'stroke="#000" stroke-width="{sw_main:.3f}"'  # Black solid
+    path_hinted_style = f'stroke="#0054a2" stroke-width="{sw_main*1.5:.3f}" stroke-dasharray="{dash_a:.3f} {dash_b:.3f}" stroke-linecap="round"'  # Blue dashed
 
     
 
     def label(x, y, text, anchor="start"):
+        """Generate SVG text element with consistent styling."""
         return (f'<text x="{x:.3f}" y="{y:.3f}" font-size="{fs:.3f}" '
                 f'text-anchor="{anchor}" font-family="monospace">{text}</text>')
 
-    # --- Build SVG ----------------------------------------------------------
+    # =================================================================
+    # STEP 5: Generate SVG markup
+    # =================================================================
     svg = []
     svg.append(
         f'<svg xmlns="http://www.w3.org/2000/svg" '
@@ -291,7 +378,7 @@ def glyph_em_overlay(
     svg.append('<rect x="{:.3f}" y="{:.3f}" width="{:.3f}" height="{:.3f}" fill="#fff"/>'
                .format(left, top_vb, width_vb, height_vb))
 
-    # Helper function to render bitmap
+    # Helper function to render bitmap overlay in the requested style
     def render_bitmap(bitmap_info, bitmap_type):
         bmp = bitmap_info['bitmap']
         img_x_em = bitmap_info['img_x_em']
@@ -303,7 +390,7 @@ def glyph_em_overlay(
         png_uri = bitmap_info['png_uri']
         
         if bitmap_style == "image":
-            # Only include opacity in style if it's not 1.0
+            # Embed the bitmap as a PNG image with pixelated rendering
             opacity_style = f" opacity: {bitmap_opacity:.3f};" if bitmap_opacity < 1.0 else ""
             svg.append(
                 f'<image x="{img_x_em:.3f}" y="{img_y_em:.3f}" '
@@ -312,64 +399,84 @@ def glyph_em_overlay(
                 f'style="image-rendering: pixelated;{opacity_style}"/>'
             )
         else:
-            # Recreate alpha buffer as grayscale values
+            # Render individual pixels as SVG shapes (rects or circles)
+            # Process bitmap pixel by pixel to create individual SVG elements
             alpha = bmp.buffer
             w, h, pitch = bmp.width, bmp.rows, bmp.pitch
-            px_w = upem / float(x_ppem)
-            px_h = upem / float(y_ppem)
-            dx_px = dx_em / (upem / float(x_ppem))
+            px_w = upem / float(x_ppem)  # Pixel width in EM units
+            px_h = upem / float(y_ppem)  # Pixel height in EM units
+            dx_px = dx_em / (upem / float(x_ppem))  # Alignment offset in pixels
             dy_px = dy_em / (upem / float(y_ppem))
+            
             for y in range(h):
+                # Pre-extract row for grayscale bitmaps (optimization)
                 row = alpha[y * pitch : y * pitch + w] if bmp.pixel_mode == ft.FT_PIXEL_MODE_GRAY else None
+                
                 for x in range(w):
+                    # Extract pixel value based on bitmap format
                     if bmp.pixel_mode == ft.FT_PIXEL_MODE_GRAY:
-                        a = row[x]
+                        a = row[x]  # 8-bit grayscale value
                     elif bmp.pixel_mode == ft.FT_PIXEL_MODE_MONO:
+                        # Extract bit from packed monochrome data
                         b = alpha[y * pitch + (x >> 3)]
                         a = 255 if (b >> (7 - (x & 7))) & 1 else 0
                     else:
-                        a = 0
+                        a = 0  # Unsupported format
+                        
                     if a == 0:
-                        continue  # Skip transparent
+                        continue  # Skip transparent pixels
+                        
+                    # Calculate pixel position in EM coordinates
                     cx = img_x_em + (x + dx_px) * px_w
                     cy = img_y_em + (y + dy_px) * px_h
                     size_x = px_w
                     size_y = px_h
-                    # Pixel darkness controls color intensity (0=white, 255=black)
+                    
+                    # Convert alpha to grayscale color (higher alpha = darker)
                     intensity = a / 255.0
-                    gray_value = int(255 * (1.0 - intensity))  # Invert: high alpha = dark color
+                    gray_value = int(255 * (1.0 - intensity))
                     fill_color = f"rgb({gray_value},{gray_value},{gray_value})"
                     
-                    # Only include fill-opacity if it's not 1.0
                     opacity_attr = f' fill-opacity="{bitmap_opacity:.3f}"' if bitmap_opacity < 1.0 else ""
                     
                     if bitmap_style == "rects":
+                        # Rectangular pixels (most accurate representation)
                         svg.append(
                             f'<rect x="{cx:.3f}" y="{cy:.3f}" width="{size_x:.3f}" height="{size_y:.3f}" '
                             f'fill="{fill_color}"{opacity_attr}/>'
                         )
                     elif bitmap_style == "circles":
+                        # Circular pixels (softer appearance)
                         r = px_w * 0.5
                         svg.append(
                             f'<circle cx="{cx + r:.3f}" cy="{cy + r:.3f}" r="{r:.3f}" '
                             f'fill="{fill_color}"{opacity_attr}/>'
                         )
 
-    # ===== Bitmap layers (lowest layer) ====================================
-    # Render bitmaps in order: unhinted first (if present), then hinted
+    # =================================================================
+    # Layer rendering order (bottom to top):
+    # 1. Bitmap layers (background)
+    # 2. Guide lines 
+    # 3. Vector outlines (foreground)
+    # 4. Labels and legend (top)
+    # =================================================================
+    
+    # Bitmap layers (rendered first, appear behind other elements)
     if "bitmap-original" in layer_set and "unhinted" in bitmaps:
         render_bitmap(bitmaps["unhinted"], "unhinted")
     
     if "bitmap-hinted" in layer_set and "hinted" in bitmaps:
         render_bitmap(bitmaps["hinted"], "hinted")
 
-    # ===== Guides (EM space) ===============================================
+    # Font metric guide lines
     if "guides" in layer_set:
 
+        # Ascender line (maximum height for tall letters like 'h', 'k')
         svg.append(
             f'<line x1="{left:.3f}" y1="{-asc_em:.3f}" x2="{right:.3f}" y2="{-asc_em:.3f}" '
             f'stroke="#e0a000" stroke-width="{sw_guid:.3f}"/>'
         )
+        # Descender line (minimum depth for letters like 'g', 'p')
         svg.append(
             f'<line x1="{left:.3f}" y1="{-desc_em:.3f}" x2="{right:.3f}" y2="{-desc_em:.3f}" '
             f'stroke="#e0a000" stroke-width="{sw_guid:.3f}"/>'
@@ -378,23 +485,28 @@ def glyph_em_overlay(
             svg.append(label(left + 0.02 * upem, -asc_em - 0.02 * upem, "ascender"))
             svg.append(label(left + 0.02 * upem, -desc_em + 0.06 * upem, "descender"))
 
+    # Baseline (Y=0, where most letters sit)
     if "baseline" in layer_set:
         svg.append(
             f'<line x1="{left:.3f}" y1="{0:.3f}" x2="{right:.3f}" y2="{0:.3f}" '
             f'stroke="#c0c0c0" stroke-width="{sw_guid:.3f}"/>'
         )
-        svg.append(label(left + 0.02 * upem, -0.02 * upem, "baseline"))
+        if "labels" in layer_set:
+            svg.append(label(left + 0.02 * upem, -0.02 * upem, "baseline"))
 
-    # ===== Bearings & advance (from ORIGINAL EM metrics) ===================
+    # Spacing and positioning guides (from original EM metrics)
     if "bearings" in layer_set:
+        # Origin line (X=0, glyph positioning reference)
         svg.append(
             f'<line x1="0" y1="{-asc_em:.3f}" x2="0" y2="{-desc_em:.3f}" '
             f'stroke="#c0c0c0" stroke-width="{sw_guid:.3f}"/>'
         )
+        # Left side bearing line (where glyph content begins)
         svg.append(
             f'<line x1="{lsb_em:.3f}" y1="{-asc_em:.3f}" x2="{lsb_em:.3f}" y2="{-desc_em:.3f}" '
             f'stroke="#00a0e0" stroke-width="{sw_guid:.3f}"/>'
         )
+        # Advance width line (where next glyph would start)
         svg.append(
             f'<line x1="{adv_em:.3f}" y1="{-asc_em:.3f}" x2="{adv_em:.3f}" y2="{-desc_em:.3f}" '
             f'stroke="#008000" stroke-width="{sw_guid:.3f}"/>'
@@ -404,7 +516,7 @@ def glyph_em_overlay(
             svg.append(label(lsb_em, -asc_em - 0.04 * upem, f"LSB={lsb_em:.1f} em-units", anchor="middle"))
             svg.append(label(adv_em, -asc_em - 0.04 * upem, f"advance={adv_em:.1f} em-units", anchor="middle"))
 
-    # ===== Original glyph bbox (EM metrics) ================================
+    # Glyph bounding box (tightest rectangle around the glyph)
     if "bbox" in layer_set:
         svg.append(
             f'<rect x="{lsb_em:.3f}" y="{-top_em:.3f}" width="{width_em:.3f}" height="{height_em:.3f}" '
@@ -414,19 +526,20 @@ def glyph_em_overlay(
             svg.append(label(lsb_em + 0.02 * upem, -top_em + 0.06 * upem,
                              f"bbox {width_em:.0f}×{height_em:.0f} em-units"))
 
-    # ===== Outlines ========================================================
-    # Original (EM) — dashed purple
+    # Vector outline paths (main content)
     if "path-original" in layer_set:
+        # Original unhinted outline as designed by the font creator
         svg.append(
             f'<path d="{orig_path_em}" fill="none" {path_original_style} />'
         )
-    # Hinted outline mapped back to EM — solid black
+        
     if "path-hinted" in layer_set:
+        # Hinted outline converted back to EM units for comparison
         svg.append(
             f'<path d="{hinted_path_em}" fill="none" {path_hinted_style} />'
         )
 
-    # ===== Legend ==========================================================
+    # Visual legend explaining the different elements
     if "labels" in layer_set:
         lx = left + 0.04 * upem
         ly = -asc_em + 0.10 * upem
@@ -468,9 +581,12 @@ def glyph_em_overlay(
 
     svg.append("</svg>")
     
-    # Generate output filename based on layers
+    # =================================================================
+    # STEP 6: Save output file with descriptive name
+    # =================================================================
+    # Generate filename based on character, hinting type, and active layers
     layer_suffix = "_".join(sorted(layer_set)) if layer_set else "empty"
-    layer_suffix = layer_suffix.replace("-", "").replace(",", "_")  # Clean up filename
+    layer_suffix = layer_suffix.replace("-", "").replace(",", "_")  # Clean up for filesystem
     out_svg = f"{char}_{hinting_target}_{layer_suffix}.svg"
     Path(out_svg).write_text("\n".join(svg), encoding="utf-8")
 
@@ -489,6 +605,12 @@ def glyph_em_overlay(
     }
 
 if __name__ == "__main__":
+    """
+    Example usage demonstrating different visualization modes.
+    Each example shows different aspects of font hinting effects.
+    """
+    
+    # Example 1: Original design vs. unhinted bitmap rendering
     info_1 = glyph_em_overlay(
         "ARIALUNI.TTF", "a",
         ppem=12, hinting_target="mono",
@@ -496,8 +618,9 @@ if __name__ == "__main__":
         bitmap_style="circles",
         bitmap_opacity=0.25
     )
-    print("Wrote (example 1):", info_1["out_svg"])
+    print("Wrote original vs unhinted bitmap:", info_1["out_svg"])
     
+    # Example 2: Comparison of original outline, hinted outline, and hinted bitmap
     info_2 = glyph_em_overlay(
         "ARIALUNI.TTF", "a", 
         ppem=12, hinting_target="mono",
@@ -505,27 +628,29 @@ if __name__ == "__main__":
         bitmap_style="circles",
         bitmap_opacity=0.25
     )
-    print("Wrote (example 2):", info_2["out_svg"])
+    print("Wrote hinting comparison:", info_2["out_svg"])
 
-    info_full = glyph_em_overlay(
+    # Example 3: Focus on bitmap rendering differences
+    info_3 = glyph_em_overlay(
         "ARIALUNI.TTF", "a", 
         ppem=12, hinting_target="normal",
         layers="path-original,bitmap-original,labels",
         bitmap_style="rects",
     )
-    print("Wrote (full comparison):", info_full["out_svg"])
+    print("Wrote bitmap analysis:", info_3["out_svg"])
 
-    info_outlines = glyph_em_overlay(
+    # Example 4: Outline comparison only
+    info_4 = glyph_em_overlay(
         "ARIALUNI.TTF", "a", 
         ppem=12, hinting_target="normal",
         layers="path-original,path-hinted,bitmap-hinted,labels",
     )
-    print("Wrote (outlines only):", info_outlines["out_svg"])
+    print("Wrote outline comparison:", info_4["out_svg"])
 
-    info_debug = glyph_em_overlay(
+    # Example 5: Complete analysis with all guides and metrics
+    info_5 = glyph_em_overlay(
         "ARIALUNI.TTF", "a", 
         ppem=12, hinting_target="normal",
         layers="path-original,path-hinted,bitmap-hinted,guides,baseline,bearings,bbox,labels",
     )
-    print("Wrote (debug):", info_debug["out_svg"])
-    
+    print("Wrote complete analysis:", info_5["out_svg"])
