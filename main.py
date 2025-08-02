@@ -1,6 +1,9 @@
 # save as glyph_to_svg_compare.py
 import freetype as ft
 from pathlib import Path
+from io import BytesIO
+from base64 import b64encode
+from PIL import Image
 
 _LOAD_TARGET = {
     "normal": ft.FT_LOAD_TARGET_NORMAL,
@@ -9,6 +12,53 @@ _LOAD_TARGET = {
     "lcd":    ft.FT_LOAD_TARGET_LCD,
     "lcd_v":  ft.FT_LOAD_TARGET_LCD_V,
 }
+
+# Map hint target to a render mode for the bitmap layer
+# (For LCD/LCD_V we default to grayscale; true subpixel needs device filtering.)
+_RENDER_MODE = {
+    "normal": ft.FT_RENDER_MODE_NORMAL,
+    "light":  ft.FT_RENDER_MODE_NORMAL,
+    "mono":   ft.FT_RENDER_MODE_MONO,
+    "lcd":    ft.FT_RENDER_MODE_NORMAL,
+    "lcd_v":  ft.FT_RENDER_MODE_NORMAL,
+}
+
+def _bitmap_to_png_data_uri(bmp: ft.Bitmap) -> str:
+    """Convert a FreeType FT_Bitmap to a PNG data URI (black glyph on transparent)."""
+    w, h = bmp.width, bmp.rows
+    pitch = bmp.pitch
+    mode = bmp.pixel_mode
+
+    # Build an 8-bit alpha mask from FT bitmap buffer
+    if mode == ft.FT_PIXEL_MODE_GRAY:
+        # Buffer is rows * pitch; each pixel 0..255 coverage.
+        # Copy row-by-row to strip pitch padding.
+        alpha = bytearray(w * h)
+        buf = bmp.buffer
+        for y in range(h):
+            row = buf[y * pitch : y * pitch + w]
+            alpha[y * w : (y + 1) * w] = row
+    elif mode == ft.FT_PIXEL_MODE_MONO:
+        # Packed 1bpp, MSB first per byte.
+        buf = bmp.buffer
+        alpha = bytearray(w * h)
+        for y in range(h):
+            row_off = y * pitch
+            for x in range(w):
+                b = buf[row_off + (x >> 3)]
+                bit = 7 - (x & 7)
+                alpha[y * w + x] = 255 if ((b >> bit) & 1) else 0
+    else:
+        # Fallback: treat as empty
+        alpha = bytearray([0] * (w * h))
+
+    # Compose RGBA: black glyph with alpha mask
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    img.putalpha(Image.frombytes("L", (w, h), bytes(alpha)))
+
+    bio = BytesIO()
+    img.save(bio, format="PNG")
+    return "data:image/png;base64," + b64encode(bio.getvalue()).decode("ascii")
 
 def glyph_to_svg_compare(
     font_path: str,
@@ -20,7 +70,8 @@ def glyph_to_svg_compare(
 ):
     """
     Writes an SVG that overlays:
-      • Filled hinted glyph (lowest layer)
+      • Hinted FT bitmap (lowest layer, from FT_Render_Glyph)
+      • Filled hinted vector (soft background fill)
       • Original outline (same size, unhinted) — dashed purple
       • Hinted outline — solid black (on top)
     Plus metrics (baseline, ascender, descender, origin, LSB, advance, bbox).
@@ -42,7 +93,7 @@ def glyph_to_svg_compare(
     dash_a    = 4.0 * k         # dash pattern
     dash_b    = 3.0 * k
     font_sz   = 10.0 * k        # label font size
-    margin    = 0.30 * ppem     # purely proportional margin
+    margin    = 0.30 * ppem     # proportional margin
 
     def outline_to_path(outline):
         """Decompose an FT_Outline into an SVG path string (y flipped for SVG)."""
@@ -82,12 +133,22 @@ def glyph_to_svg_compare(
     hinted_path = outline_to_path(hinted_slot.outline)
     hinted_metrics = hinted_slot.metrics
 
-    # --- Load original (unhinted) outline at the same size ---
+    # --- Render FT bitmap from the hinted glyph (lowest SVG layer) ----------
+    # (Rendering uses the same hinted load; render mode chosen from hinting_target.)
+    render_mode = _RENDER_MODE[hinting_target]
+    hinted_slot.render(render_mode)
+    bmp = hinted_slot.bitmap  # FT_Bitmap
+    # Position: top-left of bitmap relative to baseline/origin
+    bmp_x = hinted_slot.bitmap_left
+    bmp_y = -hinted_slot.bitmap_top  # SVG y-down
+    png_data_uri = _bitmap_to_png_data_uri(bmp)
+
+    # --- Load original (unhinted) outline at the same size ------------------
     flags_unhinted = ft.FT_LOAD_DEFAULT | ft.FT_LOAD_NO_BITMAP | ft.FT_LOAD_NO_HINTING
     face.load_char(char, flags_unhinted)
     orig_slot = face.glyph
     orig_path = outline_to_path(orig_slot.outline)
-    orig_metrics = orig_slot.metrics  # kept for comparison if needed
+    orig_metrics = orig_slot.metrics  # for info
 
     # Metrics for guides (use hinted to match what actually renders)
     lsb    = px(hinted_metrics.horiBearingX)
@@ -101,8 +162,8 @@ def glyph_to_svg_compare(
     desc = px(face.size.descender)  # negative
 
     # ViewBox to include all guides with proportional margin
-    left   = min(0.0, lsb) - margin
-    right  = max(adv, lsb + bbox_w) + margin
+    left   = min(0.0, lsb, bmp_x) - margin
+    right  = max(adv, lsb + bbox_w, bmp_x + bmp.width) + margin
     top_svg    = -(asc + margin)
     height_svg = (asc - desc) + 2 * margin
     width_svg  = right - left
@@ -124,10 +185,14 @@ def glyph_to_svg_compare(
     svg.append('<rect x="{:.3f}" y="{:.3f}" width="{:.3f}" height="{:.3f}" fill="#f9f9fb"/>'
                .format(left, top_svg, width_svg, height_svg))
 
-    # === LOWEST CONTENT LAYER: filled hinted glyph ==========================
-    # This is the “rendered character (hinted)” as a filled vector, positioned identically
-    # to the outlines. If you prefer a FT bitmap, let me know and I’ll swap this for an <image>.
-    svg.append(f'<path d="{hinted_path}" fill="#000000" fill-opacity="0.08" stroke="none"/>')
+    # === LOWEST CONTENT LAYER: FT-rendered hinted bitmap ====================
+    svg.append(
+        f'<image x="{bmp_x:.3f}" y="{bmp_y:.3f}" width="{bmp.width:.3f}" height="{bmp.rows:.3f}" '
+        f'href="{png_data_uri}" style="image-rendering: pixelated;"/>'
+    )
+
+    # Optional soft fill of hinted vector (still below guides/outlines)
+    svg.append(f'<path d="{hinted_path}" fill="#000000" fill-opacity="0.05" stroke="none"/>')
 
     # Guides: baseline, ascender, descender
     svg.append(
@@ -195,11 +260,16 @@ def glyph_to_svg_compare(
         f'stroke="#7a3fe0" stroke-dasharray="{dash_a:.3f} {dash_b:.3f}" '
         f'stroke-width="{sw_main:.3f}"/>'
     )
-    svg.append(label(legend_x + 24 * k, legend_y + 16 * k, "hinted", anchor="start"))
+    svg.append(label(legend_x + 24 * k, legend_y + 16 * k, "hinted outline", anchor="start"))
     svg.append(
         f'<line x1="{legend_x:.3f}" y1="{legend_y + 12 * k:.3f}" '
         f'x2="{legend_x + 18 * k:.3f}" y2="{legend_y + 12 * k:.3f}" '
         f'stroke="#000000" stroke-width="{sw_main:.3f}"/>'
+    )
+    svg.append(label(legend_x + 24 * k, legend_y + 32 * k, "FT bitmap (hinted)", anchor="start"))
+    svg.append(
+        f'<rect x="{legend_x:.3f}" y="{legend_y + 24 * k:.3f}" width="{12 * k:.3f}" height="{8 * k:.3f}" '
+        f'fill="#000" fill-opacity="0.4" stroke="none"/>'
     )
 
     svg.append("</svg>")
@@ -210,9 +280,7 @@ def glyph_to_svg_compare(
         "ppem": ppem,
         "dpi": dpi,
         "out_svg": str(Path(out_svg).resolve()),
-        "hinted": {
-            "lsb": lsb, "advance": adv, "bbox_w": bbox_w, "bbox_h": bbox_h,
-        },
+        "hinted": {"lsb": lsb, "advance": adv, "bbox_w": bbox_w, "bbox_h": bbox_h},
         "original": {
             "lsb": px(orig_metrics.horiBearingX),
             "advance": px(orig_metrics.horiAdvance),
