@@ -180,9 +180,9 @@ def glyph_em_overlay(
         lsb_px  = hm.horiBearingX / 64.0
         top_px  = hm.horiBearingY / 64.0
     else:
-        # Use unhinted outline for bitmap
-        face.set_pixel_sizes(ppem, 0)
-        flags_unhinted = ft.FT_LOAD_NO_HINTING | ft.FT_LOAD_NO_BITMAP
+        # Use unhinted outline for bitmap at the same pixel size
+        # Don't call set_pixel_sizes again - it was already set above
+        flags_unhinted = ft.FT_LOAD_NO_HINTING | ft.FT_LOAD_NO_BITMAP | _LOAD_TARGET[hinting_target]
         face.load_char(char, flags_unhinted)
         unhinted_slot = face.glyph
         unhinted_slot.render(render_mode)
@@ -198,11 +198,20 @@ def glyph_em_overlay(
     img_x_em = bmp_left_px * (upem / float(x_ppem))
     img_y_em = -bmp_top_px  * (upem / float(y_ppem))  # SVG y-down
 
-    # Fractional compensation so bitmap aligns to hinted bearings exactly
-    dx_px = lsb_px - bmp_left_px
-    dy_px = bmp_top_px - top_px
-    dx_em = dx_px * (upem / float(x_ppem))
-    dy_em = dy_px * (upem / float(y_ppem))
+    # Fractional compensation so bitmap aligns to the target outline exactly
+    if use_hinted_bitmap:
+        # Align hinted bitmap to hinted bearings (to align with hinted outline)
+        dx_px = lsb_px - bmp_left_px
+        dy_px = bmp_top_px - top_px
+        dx_em = dx_px * (upem / float(x_ppem))
+        dy_em = dy_px * (upem / float(y_ppem))
+    else:
+        # For unhinted bitmap: no compensation needed at all
+        # Let FreeType position the bitmap naturally according to the unhinted outline
+        dx_px = 0.0  # No horizontal compensation
+        dy_px = 0.0  # No vertical compensation 
+        dx_em = 0.0
+        dy_em = 0.0
 
     # Image size in EM
     img_w_em = bmp.width * (upem / float(x_ppem))
