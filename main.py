@@ -58,12 +58,12 @@ def glyph_em_overlay(
     char: str,
     ppem: int = 20,
     hinting_target: str = "normal",
-    out_svg: str = "glyph_em.svg",
+    # out_svg: str = "glyph_em.svg",
     # visual tuning (all in EM units, proportional to UPEM by default)
     label_scale: float = 0.040,   # label font-size = UPEM * label_scale
     stroke_main: float = 0.006,   # main outline stroke = UPEM * stroke_main
     stroke_guides: float = 0.004, # guides stroke = UPEM * stroke_guides
-    margin_em: float = 0.08,      # margins as a fraction of UPEM
+    margin_em: float = 0.01,      # margins as a fraction of UPEM
 ):
     """
     SVG in EM units:
@@ -316,6 +316,7 @@ def glyph_em_overlay(
     )
 
     svg.append("</svg>")
+    out_svg = f"{char}_hint.svg"
     Path(out_svg).write_text("\n".join(svg), encoding="utf-8")
 
     return {
@@ -338,7 +339,6 @@ if __name__ == "__main__":
     info = glyph_em_overlay(
         "ARIALUNI.TTF", "a",
         ppem=12, hinting_target="mono",
-        out_svg="a_em.svg"
     )
     print("Wrote:", info["out_svg"])
     print({k: v for k, v in info.items() if k != "out_svg"})
