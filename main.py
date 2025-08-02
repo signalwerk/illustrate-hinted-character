@@ -255,11 +255,13 @@ def glyph_em_overlay(
 
     # ===== Lowest layer: hinted FT bitmap (in EM) ===========================
     if bitmap_style == "image":
+        # Only include opacity in style if it's not 1.0
+        opacity_style = f" opacity: {bitmap_opacity:.3f};" if bitmap_opacity < 1.0 else ""
         svg.append(
             f'<image x="{img_x_em:.3f}" y="{img_y_em:.3f}" '
             f'width="{img_w_em:.3f}" height="{img_h_em:.3f}" '
             f'href="{png_uri}" transform="translate({dx_em:.3f},{dy_em:.3f})" '
-            f'style="image-rendering: pixelated; opacity: {bitmap_opacity:.3f};"/>'
+            f'style="image-rendering: pixelated;{opacity_style}"/>'
         )
     else:
         # Recreate alpha buffer as grayscale values
@@ -288,16 +290,19 @@ def glyph_em_overlay(
                 gray_value = int(255 * (1.0 - intensity))  # Invert: high alpha = dark color
                 fill_color = f"rgb({gray_value},{gray_value},{gray_value})"
                 
+                # Only include fill-opacity if it's not 1.0
+                opacity_attr = f' fill-opacity="{bitmap_opacity:.3f}"' if bitmap_opacity < 1.0 else ""
+                
                 if bitmap_style == "rects":
                     svg.append(
                         f'<rect x="{cx:.3f}" y="{cy:.3f}" width="{size_x:.3f}" height="{size_y:.3f}" '
-                        f'fill="{fill_color}" fill-opacity="{bitmap_opacity:.3f}"/>'
+                        f'fill="{fill_color}"{opacity_attr}/>'
                     )
                 elif bitmap_style == "circles":
                     r = px_w * 0.5
                     svg.append(
                         f'<circle cx="{cx + r:.3f}" cy="{cy + r:.3f}" r="{r:.3f}" '
-                        f'fill="{fill_color}" fill-opacity="{bitmap_opacity:.3f}"/>'
+                        f'fill="{fill_color}"{opacity_attr}/>'
                     )
 
     # Optional soft fill of hinted vector (in EM) just above bitmap
