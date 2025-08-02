@@ -432,37 +432,37 @@ def glyph_em_overlay(
         ly = -asc_em + 0.10 * upem
         
         if "path-original" in layer_set:
-            svg.append(label(lx + 0.12 * upem, ly, "original (EM)", anchor="start"))
+            svg.append(label(lx + 0.1 * upem, ly, "original outline", anchor="start"))
             svg.append(
                 f'<line x1="{lx:.3f}" y1="{ly - 0.02 * upem:.3f}" '
-                f'x2="{lx + 0.10 * upem:.3f}" y2="{ly - 0.02 * upem:.3f}" '
+                f'x2="{lx + 0.05 * upem:.3f}" y2="{ly - 0.02 * upem:.3f}" '
                 f'{path_original_style} />'
             )
             ly += 0.08 * upem
             
         if "path-hinted" in layer_set:
-            svg.append(label(lx + 0.12 * upem, ly, "hinted outline (EM)", anchor="start"))
+            svg.append(label(lx + 0.1 * upem, ly, "hinted outline", anchor="start"))
             svg.append(
                 f'<line x1="{lx:.3f}" y1="{ly - 0.02 * upem:.3f}" '
-                f'x2="{lx + 0.10 * upem:.3f}" y2="{ly - 0.02 * upem:.3f}" '
+                f'x2="{lx + 0.05 * upem:.3f}" y2="{ly - 0.02 * upem:.3f}" '
                 f'{path_hinted_style} />'
             )
             ly += 0.08 * upem
             
         if "bitmap-hinted" in layer_set:
-            svg.append(label(lx + 0.12 * upem, ly, "FT bitmap (hinted)", anchor="start"))
+            svg.append(label(lx + 0.1 * upem, ly, "bitmap hinted", anchor="start"))
             svg.append(
-                f'<rect x="{lx:.3f}" y="{ly - 0.02 * upem:.3f}" '
-                f'width="{0.08 * upem:.3f}" height="{0.05 * upem:.3f}" '
+                f'<rect x="{lx:.3f}" y="{ly - 0.04 * upem:.3f}" '
+                f'width="{0.05 * upem:.3f}" height="{0.05 * upem:.3f}" '
                 f'fill="#000" fill-opacity="0.4" stroke="none"/>'
             )
             ly += 0.08 * upem
             
         if "bitmap-original" in layer_set:
-            svg.append(label(lx + 0.12 * upem, ly, "FT bitmap (unhinted)", anchor="start"))
+            svg.append(label(lx + 0.1 * upem, ly, "bitmap unhinted", anchor="start"))
             svg.append(
-                f'<rect x="{lx:.3f}" y="{ly - 0.02 * upem:.3f}" '
-                f'width="{0.08 * upem:.3f}" height="{0.05 * upem:.3f}" '
+                f'<rect x="{lx:.3f}" y="{ly - 0.04 * upem:.3f}" '
+                f'width="{0.05 * upem:.3f}" height="{0.05 * upem:.3f}" '
                 f'fill="#000" fill-opacity="0.6" stroke="none"/>'
             )
 
