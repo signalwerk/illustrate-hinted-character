@@ -277,6 +277,7 @@ def glyph_em_overlay(
         f'<rect x="{lsb_em:.3f}" y="{-top_em:.3f}" width="{width_em:.3f}" height="{height_em:.3f}" '
         f'fill="none" stroke="#cc3333" stroke-width="{sw_guid:.3f}"/>'
     )
+
     svg.append(label(lsb_em + 0.02 * upem, -top_em + 0.06 * upem,
                      f"bbox {width_em:.0f}×{height_em:.0f} em-units"))
 
@@ -316,7 +317,7 @@ def glyph_em_overlay(
     )
 
     svg.append("</svg>")
-    out_svg = f"{char}_hint.svg"
+    out_svg = f"{char}_{hinting_target}_hint.svg"
     Path(out_svg).write_text("\n".join(svg), encoding="utf-8")
 
     return {
