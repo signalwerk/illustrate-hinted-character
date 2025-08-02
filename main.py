@@ -65,6 +65,8 @@ def glyph_em_overlay(
     stroke_main: float = 0.006,   # main outline stroke = UPEM * stroke_main
     stroke_guides: float = 0.004, # guides stroke = UPEM * stroke_guides
     margin_em: float = 0.01,      # margins as a fraction of UPEM
+    bitmap_style: str = "image",  # "image", "rects", "circles"
+    bitmap_opacity: float = 1,  # opacity for bitmap layer (0.0 – 1.0)
 ):
     """
     SVG in EM units:
@@ -252,12 +254,47 @@ def glyph_em_overlay(
                .format(left, top_vb, width_vb, height_vb))
 
     # ===== Lowest layer: hinted FT bitmap (in EM) ===========================
-    svg.append(
-        f'<image x="{img_x_em:.3f}" y="{img_y_em:.3f}" '
-        f'width="{img_w_em:.3f}" height="{img_h_em:.3f}" '
-        f'href="{png_uri}" transform="translate({dx_em:.3f},{dy_em:.3f})" '
-        f'style="image-rendering: pixelated;"/>'
-    )
+    if bitmap_style == "image":
+        svg.append(
+            f'<image x="{img_x_em:.3f}" y="{img_y_em:.3f}" '
+            f'width="{img_w_em:.3f}" height="{img_h_em:.3f}" '
+            f'href="{png_uri}" transform="translate({dx_em:.3f},{dy_em:.3f})" '
+            f'style="image-rendering: pixelated; opacity: {bitmap_opacity:.3f};"/>'
+        )
+    else:
+        # Recreate alpha buffer as grayscale values
+        alpha = bmp.buffer
+        w, h, pitch = bmp.width, bmp.rows, bmp.pitch
+        px_w = upem / float(x_ppem)
+        px_h = upem / float(y_ppem)
+        for y in range(h):
+            row = alpha[y * pitch : y * pitch + w] if bmp.pixel_mode == ft.FT_PIXEL_MODE_GRAY else None
+            for x in range(w):
+                if bmp.pixel_mode == ft.FT_PIXEL_MODE_GRAY:
+                    a = row[x]
+                elif bmp.pixel_mode == ft.FT_PIXEL_MODE_MONO:
+                    b = alpha[y * pitch + (x >> 3)]
+                    a = 255 if (b >> (7 - (x & 7))) & 1 else 0
+                else:
+                    a = 0
+                if a == 0:
+                    continue  # Skip transparent
+                cx = img_x_em + (x + dx_px) * px_w
+                cy = img_y_em + (y + dy_px) * px_h
+                size_x = px_w
+                size_y = px_h
+                opacity = (a / 255.0) * bitmap_opacity
+                if bitmap_style == "rects":
+                    svg.append(
+                        f'<rect x="{cx:.3f}" y="{cy:.3f}" width="{size_x:.3f}" height="{size_y:.3f}" '
+                        f'fill="#000" fill-opacity="{opacity:.3f}"/>'
+                    )
+                elif bitmap_style == "circles":
+                    r = px_w * 0.5
+                    svg.append(
+                        f'<circle cx="{cx + r:.3f}" cy="{cy + r:.3f}" r="{r:.3f}" '
+                        f'fill="#000" fill-opacity="{opacity:.3f}"/>'
+                    )
 
     # Optional soft fill of hinted vector (in EM) just above bitmap
     svg.append(f'<path d="{hinted_path_em}" fill="#000" fill-opacity="0.05" stroke="none"/>')
@@ -370,19 +407,39 @@ def glyph_em_overlay(
 
 if __name__ == "__main__":
     # Generate with hinted bitmap
-    info_hinted = glyph_em_overlay(
+    info_hinted_mono = glyph_em_overlay(
         "ARIALUNI.TTF", "a",
         ppem=12, hinting_target="mono",
-        use_hinted_bitmap=True
+        use_hinted_bitmap=True,
+        bitmap_style="circles",
+        bitmap_opacity=0.25
     )
-    print("Wrote (hinted bitmap):", info_hinted["out_svg"])
+    print("Wrote (hinted bitmap):", info_hinted_mono["out_svg"])
     
     # Generate with unhinted bitmap
-    info_unhinted = glyph_em_overlay(
+    info_unhinted_mono = glyph_em_overlay(
         "ARIALUNI.TTF", "a", 
         ppem=12, hinting_target="mono",
-        use_hinted_bitmap=False
+        use_hinted_bitmap=False,
+        bitmap_style="circles",
+        bitmap_opacity=0.25
     )
-    print("Wrote (unhinted bitmap):", info_unhinted["out_svg"])
+    print("Wrote (unhinted bitmap):", info_unhinted_mono["out_svg"])
+
+    info_hinted_normal = glyph_em_overlay(
+        "ARIALUNI.TTF", "a", 
+        ppem=12, hinting_target="normal",
+        use_hinted_bitmap=True,
+        bitmap_style="rects",
+    )
+    print("Wrote (hinted bitmap):", info_hinted_normal["out_svg"])
+
+    info_unhinted_normal = glyph_em_overlay(
+        "ARIALUNI.TTF", "a", 
+        ppem=12, hinting_target="normal",
+        use_hinted_bitmap=False,
+        bitmap_style="rects",
+    )
+    print("Wrote (unhinted bitmap):", info_unhinted_normal["out_svg"])
     
-    print({k: v for k, v in info_hinted.items() if k != "out_svg"})
+    # print({k: v for k in info_hinted_normal.items() if k != "out_svg"})
