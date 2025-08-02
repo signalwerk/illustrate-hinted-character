@@ -58,6 +58,7 @@ def glyph_em_overlay(
     char: str,
     ppem: int = 20,
     hinting_target: str = "normal",
+    use_hinted_bitmap: bool = True,  # whether to render bitmap from hinted or unhinted outline
     # out_svg: str = "glyph_em.svg",
     # visual tuning (all in EM units, proportional to UPEM by default)
     label_scale: float = 0.040,   # label font-size = UPEM * label_scale
@@ -69,7 +70,11 @@ def glyph_em_overlay(
     SVG in EM units:
       - Original (unscaled, unhinted) glyph + metrics drawn in EM space.
       - Hinted outline converted back to EM units and overlaid.
-      - FT-rendered hinted bitmap scaled/translated into EM units and placed under all.
+      - FT-rendered bitmap (hinted or unhinted based on use_hinted_bitmap) scaled/translated into EM units.
+
+    Args:
+        use_hinted_bitmap: If True, bitmap is rendered from hinted outline. 
+                          If False, bitmap is rendered from unhinted outline.
 
     All labels/line widths scale with UPEM (stable regardless of ppem).
     """
@@ -162,16 +167,32 @@ def glyph_em_overlay(
 
     hinted_path_em = hinted_em_path(hinted_slot.outline)
 
-    # --- FT bitmap (hinted), scaled & aligned in EM -------------------------
+    # --- FT bitmap (hinted or unhinted), scaled & aligned in EM -------------
     render_mode = _RENDER_MODE[hinting_target]
-    hinted_slot.render(render_mode)
-    bmp = hinted_slot.bitmap
-    bmp_left_px = hinted_slot.bitmap_left         # integer pixels
-    bmp_top_px  = hinted_slot.bitmap_top          # integer pixels (distance above baseline)
-
-    # Hinted bearings in *pixel* units (floats)
-    lsb_px  = hm.horiBearingX / 64.0
-    top_px  = hm.horiBearingY / 64.0
+    
+    if use_hinted_bitmap:
+        # Use hinted outline for bitmap
+        hinted_slot.render(render_mode)
+        bmp = hinted_slot.bitmap
+        bmp_left_px = hinted_slot.bitmap_left
+        bmp_top_px  = hinted_slot.bitmap_top
+        # Hinted bearings in *pixel* units (floats)
+        lsb_px  = hm.horiBearingX / 64.0
+        top_px  = hm.horiBearingY / 64.0
+    else:
+        # Use unhinted outline for bitmap
+        face.set_pixel_sizes(ppem, 0)
+        flags_unhinted = ft.FT_LOAD_NO_HINTING | ft.FT_LOAD_NO_BITMAP
+        face.load_char(char, flags_unhinted)
+        unhinted_slot = face.glyph
+        unhinted_slot.render(render_mode)
+        bmp = unhinted_slot.bitmap
+        bmp_left_px = unhinted_slot.bitmap_left
+        bmp_top_px  = unhinted_slot.bitmap_top
+        # Unhinted bearings in *pixel* units (floats)
+        um = unhinted_slot.metrics  # 26.6 pixels
+        lsb_px  = um.horiBearingX / 64.0
+        top_px  = um.horiBearingY / 64.0
 
     # Base image position in EM (from integer bitmap offsets)
     img_x_em = bmp_left_px * (upem / float(x_ppem))
@@ -309,7 +330,8 @@ def glyph_em_overlay(
         f'x2="{lx + 0.10 * upem:.3f}" y2="{ly + 0.06 * upem:.3f}" '
         f'stroke="#000000" stroke-width="{sw_main:.3f}"/>'
     )
-    svg.append(label(lx + 0.12 * upem, ly + 0.16 * upem, "FT bitmap (hinted)", anchor="start"))
+    bitmap_type = "hinted" if use_hinted_bitmap else "unhinted"
+    svg.append(label(lx + 0.12 * upem, ly + 0.16 * upem, f"FT bitmap ({bitmap_type})", anchor="start"))
     svg.append(
         f'<rect x="{lx:.3f}" y="{ly + 0.12 * upem:.3f}" '
         f'width="{0.08 * upem:.3f}" height="{0.05 * upem:.3f}" '
@@ -317,7 +339,8 @@ def glyph_em_overlay(
     )
 
     svg.append("</svg>")
-    out_svg = f"{char}_{hinting_target}_hint.svg"
+    bitmap_suffix = "hint" if use_hinted_bitmap else "unhint"
+    out_svg = f"{char}_{hinting_target}_{bitmap_suffix}.svg"
     Path(out_svg).write_text("\n".join(svg), encoding="utf-8")
 
     return {
@@ -337,9 +360,20 @@ def glyph_em_overlay(
     }
 
 if __name__ == "__main__":
-    info = glyph_em_overlay(
+    # Generate with hinted bitmap
+    info_hinted = glyph_em_overlay(
         "ARIALUNI.TTF", "a",
         ppem=12, hinting_target="mono",
+        use_hinted_bitmap=True
     )
-    print("Wrote:", info["out_svg"])
-    print({k: v for k, v in info.items() if k != "out_svg"})
+    print("Wrote (hinted bitmap):", info_hinted["out_svg"])
+    
+    # Generate with unhinted bitmap
+    info_unhinted = glyph_em_overlay(
+        "ARIALUNI.TTF", "a", 
+        ppem=12, hinting_target="mono",
+        use_hinted_bitmap=False
+    )
+    print("Wrote (unhinted bitmap):", info_unhinted["out_svg"])
+    
+    print({k: v for k, v in info_hinted.items() if k != "out_svg"})
