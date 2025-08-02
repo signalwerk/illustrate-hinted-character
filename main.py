@@ -1,4 +1,5 @@
-# save as glyph_to_svg_compare.py
+# save as glyph_em_overlay.py
+# pip install freetype-py pillow
 import freetype as ft
 from pathlib import Path
 from io import BytesIO
@@ -12,263 +13,305 @@ _LOAD_TARGET = {
     "lcd":    ft.FT_LOAD_TARGET_LCD,
     "lcd_v":  ft.FT_LOAD_TARGET_LCD_V,
 }
-
-# Map hint target to a render mode for the bitmap layer
-# (For LCD/LCD_V we default to grayscale; true subpixel needs device filtering.)
+# Pick a render mode for the bitmap layer
 _RENDER_MODE = {
-    "normal": ft.FT_RENDER_MODE_NORMAL,
+    "normal": ft.FT_RENDER_MODE_NORMAL,   # 8-bit gray
     "light":  ft.FT_RENDER_MODE_NORMAL,
-    "mono":   ft.FT_RENDER_MODE_MONO,
-    "lcd":    ft.FT_RENDER_MODE_NORMAL,
+    "mono":   ft.FT_RENDER_MODE_MONO,     # 1-bit
+    "lcd":    ft.FT_RENDER_MODE_NORMAL,   # (true LCD needs filtering)
     "lcd_v":  ft.FT_RENDER_MODE_NORMAL,
 }
 
-def _bitmap_to_png_data_uri(bmp: ft.Bitmap) -> str:
-    """Convert a FreeType FT_Bitmap to a PNG data URI (black glyph on transparent)."""
-    w, h = bmp.width, bmp.rows
-    pitch = bmp.pitch
-    mode = bmp.pixel_mode
+def _png_data_uri_from_bitmap(bmp: ft.Bitmap) -> str:
+    """Convert an FT_Bitmap (GRAY or MONO) to a PNG data URI with alpha only."""
+    w, h, pitch, mode = bmp.width, bmp.rows, bmp.pitch, bmp.pixel_mode
+    if w == 0 or h == 0:
+        # empty
+        return "data:image/png;base64," + b64encode(b"\x89PNG\r\n\x1a\n").decode("ascii")
 
-    # Build an 8-bit alpha mask from FT bitmap buffer
     if mode == ft.FT_PIXEL_MODE_GRAY:
-        # Buffer is rows * pitch; each pixel 0..255 coverage.
-        # Copy row-by-row to strip pitch padding.
-        alpha = bytearray(w * h)
         buf = bmp.buffer
+        alpha = bytearray(w * h)
         for y in range(h):
             row = buf[y * pitch : y * pitch + w]
             alpha[y * w : (y + 1) * w] = row
     elif mode == ft.FT_PIXEL_MODE_MONO:
-        # Packed 1bpp, MSB first per byte.
         buf = bmp.buffer
         alpha = bytearray(w * h)
         for y in range(h):
             row_off = y * pitch
             for x in range(w):
                 b = buf[row_off + (x >> 3)]
-                bit = 7 - (x & 7)
-                alpha[y * w + x] = 255 if ((b >> bit) & 1) else 0
+                alpha[y * w + x] = 255 if (b >> (7 - (x & 7))) & 1 else 0
     else:
-        # Fallback: treat as empty
+        # treat unsupported modes as empty
         alpha = bytearray([0] * (w * h))
 
-    # Compose RGBA: black glyph with alpha mask
     img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     img.putalpha(Image.frombytes("L", (w, h), bytes(alpha)))
-
     bio = BytesIO()
     img.save(bio, format="PNG")
     return "data:image/png;base64," + b64encode(bio.getvalue()).decode("ascii")
 
-def glyph_to_svg_compare(
+def glyph_em_overlay(
     font_path: str,
     char: str,
-    ppem: int = 64,
-    dpi: int = 72,
+    ppem: int = 20,
     hinting_target: str = "normal",
-    out_svg: str = "glyph_compare.svg",
+    out_svg: str = "glyph_em.svg",
+    # visual tuning (all in EM units, proportional to UPEM by default)
+    label_scale: float = 0.040,   # label font-size = UPEM * label_scale
+    stroke_main: float = 0.006,   # main outline stroke = UPEM * stroke_main
+    stroke_guides: float = 0.004, # guides stroke = UPEM * stroke_guides
+    margin_em: float = 0.08,      # margins as a fraction of UPEM
 ):
     """
-    Writes an SVG that overlays:
-      • Hinted FT bitmap (lowest layer, from FT_Render_Glyph)
-      • Filled hinted vector (soft background fill)
-      • Original outline (same size, unhinted) — dashed purple
-      • Hinted outline — solid black (on top)
-    Plus metrics (baseline, ascender, descender, origin, LSB, advance, bbox).
+    SVG in EM units:
+      - Original (unscaled, unhinted) glyph + metrics drawn in EM space.
+      - Hinted outline converted back to EM units and overlaid.
+      - FT-rendered hinted bitmap scaled/translated into EM units and placed under all.
 
-    All strokes, dashes, and label font sizes scale in proportion to `ppem`.
+    All labels/line widths scale with UPEM (stable regardless of ppem).
     """
-
     face = ft.Face(font_path)
-    face.set_char_size(0, ppem * 64, dpi, dpi)
-    scale26_6 = 1.0 / 64.0
+    # UPEM (often 2048; note the common value is 2048, not 2024)
+    upem = face.units_per_EM
 
-    def px(v):  # 26.6 -> float pixels
-        return v * scale26_6
+    # --- ORIGINAL (EM-space) -----------------------------------------------
+    # Load NO_SCALE|NO_HINTING: outline and metrics in *font units* (EM units).
+    face.load_char(char, ft.FT_LOAD_NO_HINTING | ft.FT_LOAD_NO_SCALE)
+    orig_slot = face.glyph
+    orig_outline = orig_slot.outline
+    om = orig_slot.metrics  # EM units here
 
-    # --- Style scaling (proportional to ppem) -------------------------------
-    k = ppem / 64.0  # 1.0 at 64 ppem
-    sw_main   = 1.2 * k         # outline strokes
-    sw_guides = 1.0 * k         # guide strokes
-    dash_a    = 4.0 * k         # dash pattern
-    dash_b    = 3.0 * k
-    font_sz   = 10.0 * k        # label font size
-    margin    = 0.30 * ppem     # proportional margin
+    # EM metrics (no /64 needed under NO_SCALE)
+    lsb_em   = float(om.horiBearingX)
+    top_em   = float(om.horiBearingY)
+    width_em = float(om.width)
+    height_em= float(om.height)
+    adv_em   = float(om.horiAdvance)
+    # Face vertical metrics in EM units
+    asc_em   = float(face.ascender)
+    desc_em  = float(face.descender)  # negative
 
-    def outline_to_path(outline):
-        """Decompose an FT_Outline into an SVG path string (y flipped for SVG)."""
-        cmds = []
-        contour_open = False
-
+    # Helpers for EM-space SVG path (y-down flip at write time)
+    def em_path_from_outline(outline):
+        cmds, open_flag = [], False
         def move_to(p, _):
-            nonlocal contour_open
-            if contour_open:
-                cmds.append("Z")
-            cmds.append(f"M {px(p.x):.3f} {-px(p.y):.3f}")
-            contour_open = True
-
+            nonlocal open_flag
+            if open_flag: cmds.append("Z")
+            cmds.append(f"M {p.x:.3f} {-p.y:.3f}")
+            open_flag = True
         def line_to(p, _):
-            cmds.append(f"L {px(p.x):.3f} {-px(p.y):.3f}")
-
+            cmds.append(f"L {p.x:.3f} {-p.y:.3f}")
         def conic_to(c, p, _):
-            cmds.append(f"Q {px(c.x):.3f} {-px(c.y):.3f} {px(p.x):.3f} {-px(p.y):.3f}")
-
+            cmds.append(f"Q {c.x:.3f} {-c.y:.3f} {p.x:.3f} {-p.y:.3f}")
         def cubic_to(c1, c2, p, _):
             cmds.append(
                 "C "
-                f"{px(c1.x):.3f} {-px(c1.y):.3f} "
-                f"{px(c2.x):.3f} {-px(c2.y):.3f} "
-                f"{px(p.x):.3f} {-px(p.y):.3f}"
+                f"{c1.x:.3f} {-c1.y:.3f} "
+                f"{c2.x:.3f} {-c2.y:.3f} "
+                f"{p.x:.3f} {-p.y:.3f}"
             )
-
         outline.decompose(move_to=move_to, line_to=line_to, conic_to=conic_to, cubic_to=cubic_to)
-        if contour_open:
-            cmds.append("Z")
+        if open_flag: cmds.append("Z")
         return " ".join(cmds)
 
-    # --- Load hinted outline (grid-fitted) ---
+    orig_path_em = em_path_from_outline(orig_outline)
+
+    # --- HINTED (pixel space) -> back to EM --------------------------------
+    # Set pixel size for hinting and bitmap
+    face.set_pixel_sizes(ppem, 0)
+    # Load hinted scalable outline (26.6 pixel units in glyph.outline)
     flags_hinted = ft.FT_LOAD_DEFAULT | ft.FT_LOAD_NO_BITMAP | _LOAD_TARGET[hinting_target]
     face.load_char(char, flags_hinted)
     hinted_slot = face.glyph
-    hinted_path = outline_to_path(hinted_slot.outline)
-    hinted_metrics = hinted_slot.metrics
+    hm = hinted_slot.metrics  # 26.6 pixels
+    x_ppem = face.size.x_ppem
+    y_ppem = face.size.y_ppem
 
-    # --- Render FT bitmap from the hinted glyph (lowest SVG layer) ----------
-    # (Rendering uses the same hinted load; render mode chosen from hinting_target.)
+    # Pixel->EM conversion factors
+    # px_float * (UPEM / ppem) => EM
+    def px_to_em_x(px26_6): return (px26_6 / 64.0) * (upem / float(x_ppem))
+    def px_to_em_y(px26_6): return (px26_6 / 64.0) * (upem / float(y_ppem))
+
+    def hinted_em_path(outline):
+        cmds, open_flag = [], False
+        def move_to(p, _):
+            nonlocal open_flag
+            if open_flag: cmds.append("Z")
+            cmds.append(f"M {px_to_em_x(p.x):.3f} {-px_to_em_y(p.y):.3f}")
+            open_flag = True
+        def line_to(p, _):
+            cmds.append(f"L {px_to_em_x(p.x):.3f} {-px_to_em_y(p.y):.3f}")
+        def conic_to(c, p, _):
+            cmds.append(
+                f"Q {px_to_em_x(c.x):.3f} {-px_to_em_y(c.y):.3f} "
+                f"{px_to_em_x(p.x):.3f} {-px_to_em_y(p.y):.3f}"
+            )
+        def cubic_to(c1, c2, p, _):
+            cmds.append(
+                "C "
+                f"{px_to_em_x(c1.x):.3f} {-px_to_em_y(c1.y):.3f} "
+                f"{px_to_em_x(c2.x):.3f} {-px_to_em_y(c2.y):.3f} "
+                f"{px_to_em_x(p.x):.3f} {-px_to_em_y(p.y):.3f}"
+            )
+        outline.decompose(move_to=move_to, line_to=line_to, conic_to=conic_to, cubic_to=cubic_to)
+        if open_flag: cmds.append("Z")
+        return " ".join(cmds)
+
+    hinted_path_em = hinted_em_path(hinted_slot.outline)
+
+    # --- FT bitmap (hinted), scaled & aligned in EM -------------------------
     render_mode = _RENDER_MODE[hinting_target]
     hinted_slot.render(render_mode)
-    bmp = hinted_slot.bitmap  # FT_Bitmap
-    # Position: top-left of bitmap relative to baseline/origin
-    bmp_x = hinted_slot.bitmap_left
-    bmp_y = -hinted_slot.bitmap_top  # SVG y-down
-    png_data_uri = _bitmap_to_png_data_uri(bmp)
+    bmp = hinted_slot.bitmap
+    bmp_left_px = hinted_slot.bitmap_left         # integer pixels
+    bmp_top_px  = hinted_slot.bitmap_top          # integer pixels (distance above baseline)
 
-    # --- Load original (unhinted) outline at the same size ------------------
-    flags_unhinted = ft.FT_LOAD_DEFAULT | ft.FT_LOAD_NO_BITMAP | ft.FT_LOAD_NO_HINTING
-    face.load_char(char, flags_unhinted)
-    orig_slot = face.glyph
-    orig_path = outline_to_path(orig_slot.outline)
-    orig_metrics = orig_slot.metrics  # for info
+    # Hinted bearings in *pixel* units (floats)
+    lsb_px  = hm.horiBearingX / 64.0
+    top_px  = hm.horiBearingY / 64.0
 
-    # Metrics for guides (use hinted to match what actually renders)
-    lsb    = px(hinted_metrics.horiBearingX)
-    top    = px(hinted_metrics.horiBearingY)
-    bbox_w = px(hinted_metrics.width)
-    bbox_h = px(hinted_metrics.height)
-    adv    = px(hinted_metrics.horiAdvance)
+    # Base image position in EM (from integer bitmap offsets)
+    img_x_em = bmp_left_px * (upem / float(x_ppem))
+    img_y_em = -bmp_top_px  * (upem / float(y_ppem))  # SVG y-down
 
-    # Correct asc/desc
-    asc  = px(face.size.ascender)
-    desc = px(face.size.descender)  # negative
+    # Fractional compensation so bitmap aligns to hinted bearings exactly
+    dx_px = lsb_px - bmp_left_px
+    dy_px = bmp_top_px - top_px
+    dx_em = dx_px * (upem / float(x_ppem))
+    dy_em = dy_px * (upem / float(y_ppem))
 
-    # ViewBox to include all guides with proportional margin
-    left   = min(0.0, lsb, bmp_x) - margin
-    right  = max(adv, lsb + bbox_w, bmp_x + bmp.width) + margin
-    top_svg    = -(asc + margin)
-    height_svg = (asc - desc) + 2 * margin
-    width_svg  = right - left
+    # Image size in EM
+    img_w_em = bmp.width * (upem / float(x_ppem))
+    img_h_em = bmp.rows  * (upem / float(y_ppem))
+
+    png_uri = _png_data_uri_from_bitmap(bmp)
+
+    # --- ViewBox in EM units (margin relative to UPEM) ----------------------
+    margin = margin_em * upem
+    # Include original metrics (EM) and hinted bitmap extents
+    img_left_em  = img_x_em + dx_em
+    img_right_em = img_left_em + img_w_em
+    left  = min(0.0, lsb_em, img_left_em) - margin
+    right = max(adv_em, lsb_em + width_em, img_right_em) + margin
+    top_vb    = -(asc_em + margin)     # SVG y-down
+    height_vb = (asc_em - desc_em) + 2 * margin
+    width_vb  = right - left
+
+    # --- Scaled styles in EM units (proportional to UPEM) -------------------
+    fs = label_scale * upem
+    sw_main = stroke_main * upem
+    sw_guid = stroke_guides * upem
+    dash_a = 0.020 * upem
+    dash_b = 0.015 * upem
 
     def label(x, y, text, anchor="start"):
-        return (
-            f'<text x="{x:.3f}" y="{y:.3f}" font-size="{font_sz:.3f}" '
-            f'text-anchor="{anchor}" font-family="monospace">{text}</text>'
-        )
+        return (f'<text x="{x:.3f}" y="{y:.3f}" font-size="{fs:.3f}" '
+                f'text-anchor="{anchor}" font-family="monospace">{text}</text>')
 
+    # --- Build SVG ----------------------------------------------------------
     svg = []
     svg.append(
         f'<svg xmlns="http://www.w3.org/2000/svg" '
-        f'viewBox="{left:.3f} {top_svg:.3f} {width_svg:.3f} {height_svg:.3f}" '
-        f'width="{width_svg:.0f}" height="{height_svg:.0f}">'
+        f'viewBox="{left:.3f} {top_vb:.3f} {width_vb:.3f} {height_vb:.3f}" '
+        f'width="{width_vb:.0f}" height="{height_vb:.0f}">'
     )
-
-    # Background
     svg.append('<rect x="{:.3f}" y="{:.3f}" width="{:.3f}" height="{:.3f}" fill="#f9f9fb"/>'
-               .format(left, top_svg, width_svg, height_svg))
+               .format(left, top_vb, width_vb, height_vb))
 
-    # === LOWEST CONTENT LAYER: FT-rendered hinted bitmap ====================
+    # ===== Lowest layer: hinted FT bitmap (in EM) ===========================
     svg.append(
-        f'<image x="{bmp_x:.3f}" y="{bmp_y:.3f}" width="{bmp.width:.3f}" height="{bmp.rows:.3f}" '
-        f'href="{png_data_uri}" style="image-rendering: pixelated;"/>'
+        f'<image x="{img_x_em:.3f}" y="{img_y_em:.3f}" '
+        f'width="{img_w_em:.3f}" height="{img_h_em:.3f}" '
+        f'href="{png_uri}" transform="translate({dx_em:.3f},{dy_em:.3f})" '
+        f'style="image-rendering: pixelated;"/>'
     )
 
-    # Optional soft fill of hinted vector (still below guides/outlines)
-    svg.append(f'<path d="{hinted_path}" fill="#000000" fill-opacity="0.05" stroke="none"/>')
+    # Optional soft fill of hinted vector (in EM) just above bitmap
+    svg.append(f'<path d="{hinted_path_em}" fill="#000" fill-opacity="0.05" stroke="none"/>')
 
-    # Guides: baseline, ascender, descender
+    # Guides (EM space)
     svg.append(
         f'<line x1="{left:.3f}" y1="{0:.3f}" x2="{right:.3f}" y2="{0:.3f}" '
-        f'stroke="#c0c0c0" stroke-width="{sw_guides:.3f}" '
+        f'stroke="#c0c0c0" stroke-width="{sw_guid:.3f}" '
         f'stroke-dasharray="{dash_a:.3f} {dash_b:.3f}"/>'
     )
     svg.append(
-        f'<line x1="{left:.3f}" y1="{-asc:.3f}" x2="{right:.3f}" y2="{-asc:.3f}" '
-        f'stroke="#e0a000" stroke-width="{sw_guides:.3f}" '
+        f'<line x1="{left:.3f}" y1="{-asc_em:.3f}" x2="{right:.3f}" y2="{-asc_em:.3f}" '
+        f'stroke="#e0a000" stroke-width="{sw_guid:.3f}" '
         f'stroke-dasharray="{dash_a:.3f} {dash_b:.3f}"/>'
     )
     svg.append(
-        f'<line x1="{left:.3f}" y1="{-desc:.3f}" x2="{right:.3f}" y2="{-desc:.3f}" '
-        f'stroke="#e0a000" stroke-width="{sw_guides:.3f}" '
+        f'<line x1="{left:.3f}" y1="{-desc_em:.3f}" x2="{right:.3f}" y2="{-desc_em:.3f}" '
+        f'stroke="#e0a000" stroke-width="{sw_guid:.3f}" '
         f'stroke-dasharray="{dash_a:.3f} {dash_b:.3f}"/>'
     )
-    svg.append(label(left + 3 * k, -asc - 3 * k, "ascender"))
-    svg.append(label(left + 3 * k, -3 * k, "baseline"))
-    svg.append(label(left + 3 * k, -desc + 12 * k, "descender"))
+    svg.append(label(left + 0.02 * upem, -asc_em - 0.02 * upem, "ascender"))
+    svg.append(label(left + 0.02 * upem, -0.02 * upem, "baseline"))
+    svg.append(label(left + 0.02 * upem, -desc_em + 0.06 * upem, "descender"))
 
-    # Origin, LSB, advance (from hinted metrics)
+    # Bearings & advance (from ORIGINAL EM metrics)
     svg.append(
-        f'<line x1="0" y1="{-asc:.3f}" x2="0" y2="{-desc:.3f}" '
-        f'stroke="#c0c0c0" stroke-width="{sw_guides:.3f}" '
+        f'<line x1="0" y1="{-asc_em:.3f}" x2="0" y2="{-desc_em:.3f}" '
+        f'stroke="#c0c0c0" stroke-width="{sw_guid:.3f}" '
         f'stroke-dasharray="{dash_a:.3f} {dash_b:.3f}"/>'
     )
-    svg.append(label(0, -asc - 6 * k, "origin x=0", anchor="middle"))
+    svg.append(label(0, -asc_em - 0.04 * upem, "origin x=0", anchor="middle"))
     svg.append(
-        f'<line x1="{lsb:.3f}" y1="{-asc:.3f}" x2="{lsb:.3f}" y2="{-desc:.3f}" '
-        f'stroke="#00a0e0" stroke-width="{sw_guides:.3f}" '
+        f'<line x1="{lsb_em:.3f}" y1="{-asc_em:.3f}" x2="{lsb_em:.3f}" y2="{-desc_em:.3f}" '
+        f'stroke="#00a0e0" stroke-width="{sw_guid:.3f}" '
         f'stroke-dasharray="{dash_a:.3f} {dash_b:.3f}"/>'
     )
-    svg.append(label(lsb, -asc - 6 * k, f"LSB={lsb:.2f}px", anchor="middle"))
+    svg.append(label(lsb_em, -asc_em - 0.04 * upem, f"LSB={lsb_em:.1f} em-units", anchor="middle"))
     svg.append(
-        f'<line x1="{adv:.3f}" y1="{-asc:.3f}" x2="{adv:.3f}" y2="{-desc:.3f}" '
-        f'stroke="#008000" stroke-width="{sw_guides:.3f}" '
+        f'<line x1="{adv_em:.3f}" y1="{-asc_em:.3f}" x2="{adv_em:.3f}" y2="{-desc_em:.3f}" '
+        f'stroke="#008000" stroke-width="{sw_guid:.3f}" '
         f'stroke-dasharray="{dash_a:.3f} {dash_b:.3f}"/>'
     )
-    svg.append(label(adv, -asc - 6 * k, f"advance={adv:.2f}px", anchor="middle"))
+    svg.append(label(adv_em, -asc_em - 0.04 * upem, f"advance={adv_em:.1f} em-units", anchor="middle"))
 
-    # Glyph bbox (hinted metrics)
+    # Original glyph bbox (EM metrics)
     svg.append(
-        f'<rect x="{lsb:.3f}" y="{-top:.3f}" width="{bbox_w:.3f}" height="{bbox_h:.3f}" '
-        f'fill="none" stroke="#cc3333" stroke-width="{sw_guides:.3f}"/>'
+        f'<rect x="{lsb_em:.3f}" y="{-top_em:.3f}" width="{width_em:.3f}" height="{height_em:.3f}" '
+        f'fill="none" stroke="#cc3333" stroke-width="{sw_guid:.3f}"/>'
     )
-    svg.append(label(lsb + 3 * k, -top + 12 * k, f"bbox {bbox_w:.2f}×{bbox_h:.2f}px"))
+    svg.append(label(lsb_em + 0.02 * upem, -top_em + 0.06 * upem,
+                     f"bbox {width_em:.0f}×{height_em:.0f} em-units"))
 
-    # --- Outlines ---
-    # Original (unhinted) outline — dashed purple
+    # --- Outlines -----------------------------------------------------------
+    # Original (EM) — dashed purple
     svg.append(
-        f'<path d="{orig_path}" fill="none" stroke="#7a3fe0" '
+        f'<path d="{orig_path_em}" fill="none" stroke="#7a3fe0" '
         f'stroke-width="{sw_main:.3f}" stroke-dasharray="{dash_a:.3f} {dash_b:.3f}" opacity="0.95"/>'
     )
-    # Hinted outline — solid black on top
-    svg.append(f'<path d="{hinted_path}" fill="none" stroke="#000000" stroke-width="{sw_main:.3f}"/>')
+    # Hinted outline mapped back to EM — solid black
+    svg.append(
+        f'<path d="{hinted_path_em}" fill="none" stroke="#000000" '
+        f'stroke-width="{sw_main:.3f}"/>'
+    )
 
     # Legend
-    legend_x = left + 8 * k
-    legend_y = -asc + 16 * k
-    svg.append(label(legend_x + 24 * k, legend_y, "original (unhinted)", anchor="start"))
+    lx = left + 0.04 * upem
+    ly = -asc_em + 0.10 * upem
+    svg.append(label(lx + 0.12 * upem, ly, "original (EM)", anchor="start"))
     svg.append(
-        f'<line x1="{legend_x:.3f}" y1="{legend_y - 4 * k:.3f}" '
-        f'x2="{legend_x + 18 * k:.3f}" y2="{legend_y - 4 * k:.3f}" '
+        f'<line x1="{lx:.3f}" y1="{ly - 0.02 * upem:.3f}" '
+        f'x2="{lx + 0.10 * upem:.3f}" y2="{ly - 0.02 * upem:.3f}" '
         f'stroke="#7a3fe0" stroke-dasharray="{dash_a:.3f} {dash_b:.3f}" '
         f'stroke-width="{sw_main:.3f}"/>'
     )
-    svg.append(label(legend_x + 24 * k, legend_y + 16 * k, "hinted outline", anchor="start"))
+    svg.append(label(lx + 0.12 * upem, ly + 0.08 * upem, "hinted outline (EM)", anchor="start"))
     svg.append(
-        f'<line x1="{legend_x:.3f}" y1="{legend_y + 12 * k:.3f}" '
-        f'x2="{legend_x + 18 * k:.3f}" y2="{legend_y + 12 * k:.3f}" '
+        f'<line x1="{lx:.3f}" y1="{ly + 0.06 * upem:.3f}" '
+        f'x2="{lx + 0.10 * upem:.3f}" y2="{ly + 0.06 * upem:.3f}" '
         f'stroke="#000000" stroke-width="{sw_main:.3f}"/>'
     )
-    svg.append(label(legend_x + 24 * k, legend_y + 32 * k, "FT bitmap (hinted)", anchor="start"))
+    svg.append(label(lx + 0.12 * upem, ly + 0.16 * upem, "FT bitmap (hinted)", anchor="start"))
     svg.append(
-        f'<rect x="{legend_x:.3f}" y="{legend_y + 24 * k:.3f}" width="{12 * k:.3f}" height="{8 * k:.3f}" '
+        f'<rect x="{lx:.3f}" y="{ly + 0.12 * upem:.3f}" '
+        f'width="{0.08 * upem:.3f}" height="{0.05 * upem:.3f}" '
         f'fill="#000" fill-opacity="0.4" stroke="none"/>'
     )
 
@@ -276,25 +319,26 @@ def glyph_to_svg_compare(
     Path(out_svg).write_text("\n".join(svg), encoding="utf-8")
 
     return {
-        "char": char,
-        "ppem": ppem,
-        "dpi": dpi,
         "out_svg": str(Path(out_svg).resolve()),
-        "hinted": {"lsb": lsb, "advance": adv, "bbox_w": bbox_w, "bbox_h": bbox_h},
-        "original": {
-            "lsb": px(orig_metrics.horiBearingX),
-            "advance": px(orig_metrics.horiAdvance),
-            "bbox_w": px(orig_metrics.width),
-            "bbox_h": px(orig_metrics.height),
+        "upem": upem,
+        "ppem": ppem,
+        "x_ppem": x_ppem,
+        "y_ppem": y_ppem,
+        "original_metrics_em": {
+            "lsb": lsb_em, "top": top_em, "width": width_em, "height": height_em, "advance": adv_em,
+            "ascender": asc_em, "descender": desc_em,
         },
-        "ascender": asc,
-        "descender": desc,
+        "bitmap_align": {
+            "bitmap_left_px": bmp_left_px, "bitmap_top_px": bmp_top_px,
+            "dx_px": dx_px, "dy_px": dy_px, "dx_em": dx_em, "dy_em": dy_em,
+        },
     }
 
 if __name__ == "__main__":
-    info = glyph_to_svg_compare(
-        "ARIALUNI.TTF", "a", ppem=12, dpi=96,
-        hinting_target="mono", out_svg="a_hint.svg"
+    info = glyph_em_overlay(
+        "ARIALUNI.TTF", "a",
+        ppem=12, hinting_target="mono",
+        out_svg="a_em.svg"
     )
     print("Wrote:", info["out_svg"])
     print({k: v for k, v in info.items() if k != "out_svg"})
