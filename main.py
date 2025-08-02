@@ -283,17 +283,21 @@ def glyph_em_overlay(
                 cy = img_y_em + (y + dy_px) * px_h
                 size_x = px_w
                 size_y = px_h
-                opacity = (a / 255.0) * bitmap_opacity
+                # Pixel darkness controls color intensity (0=white, 255=black)
+                intensity = a / 255.0
+                gray_value = int(255 * (1.0 - intensity))  # Invert: high alpha = dark color
+                fill_color = f"rgb({gray_value},{gray_value},{gray_value})"
+                
                 if bitmap_style == "rects":
                     svg.append(
                         f'<rect x="{cx:.3f}" y="{cy:.3f}" width="{size_x:.3f}" height="{size_y:.3f}" '
-                        f'fill="#000" fill-opacity="{opacity:.3f}"/>'
+                        f'fill="{fill_color}" fill-opacity="{bitmap_opacity:.3f}"/>'
                     )
                 elif bitmap_style == "circles":
                     r = px_w * 0.5
                     svg.append(
                         f'<circle cx="{cx + r:.3f}" cy="{cy + r:.3f}" r="{r:.3f}" '
-                        f'fill="#000" fill-opacity="{opacity:.3f}"/>'
+                        f'fill="{fill_color}" fill-opacity="{bitmap_opacity:.3f}"/>'
                     )
 
     # Optional soft fill of hinted vector (in EM) just above bitmap
