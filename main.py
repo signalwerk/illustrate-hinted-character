@@ -288,7 +288,7 @@ def glyph_em_overlay(
         f'viewBox="{left:.3f} {top_vb:.3f} {width_vb:.3f} {height_vb:.3f}" '
         f'width="{width_vb:.0f}" height="{height_vb:.0f}">'
     )
-    svg.append('<rect x="{:.3f}" y="{:.3f}" width="{:.3f}" height="{:.3f}" fill="#f9f9fb"/>'
+    svg.append('<rect x="{:.3f}" y="{:.3f}" width="{:.3f}" height="{:.3f}" fill="#fff"/>'
                .format(left, top_vb, width_vb, height_vb))
 
     # Helper function to render bitmap
@@ -368,13 +368,11 @@ def glyph_em_overlay(
 
         svg.append(
             f'<line x1="{left:.3f}" y1="{-asc_em:.3f}" x2="{right:.3f}" y2="{-asc_em:.3f}" '
-            f'stroke="#e0a000" stroke-width="{sw_guid:.3f}" '
-            f'stroke-dasharray="{dash_a:.3f} {dash_b:.3f}"/>'
+            f'stroke="#e0a000" stroke-width="{sw_guid:.3f}"/>'
         )
         svg.append(
             f'<line x1="{left:.3f}" y1="{-desc_em:.3f}" x2="{right:.3f}" y2="{-desc_em:.3f}" '
-            f'stroke="#e0a000" stroke-width="{sw_guid:.3f}" '
-            f'stroke-dasharray="{dash_a:.3f} {dash_b:.3f}"/>'
+            f'stroke="#e0a000" stroke-width="{sw_guid:.3f}"/>'
         )
         if "labels" in layer_set:
             svg.append(label(left + 0.02 * upem, -asc_em - 0.02 * upem, "ascender"))
@@ -383,8 +381,7 @@ def glyph_em_overlay(
     if "baseline" in layer_set:
         svg.append(
             f'<line x1="{left:.3f}" y1="{0:.3f}" x2="{right:.3f}" y2="{0:.3f}" '
-            f'stroke="#c0c0c0" stroke-width="{sw_guid:.3f}" '
-            f'stroke-dasharray="{dash_a:.3f} {dash_b:.3f}"/>'
+            f'stroke="#c0c0c0" stroke-width="{sw_guid:.3f}"/>'
         )
         svg.append(label(left + 0.02 * upem, -0.02 * upem, "baseline"))
 
@@ -392,18 +389,15 @@ def glyph_em_overlay(
     if "bearings" in layer_set:
         svg.append(
             f'<line x1="0" y1="{-asc_em:.3f}" x2="0" y2="{-desc_em:.3f}" '
-            f'stroke="#c0c0c0" stroke-width="{sw_guid:.3f}" '
-            f'stroke-dasharray="{dash_a:.3f} {dash_b:.3f}"/>'
+            f'stroke="#c0c0c0" stroke-width="{sw_guid:.3f}"/>'
         )
         svg.append(
             f'<line x1="{lsb_em:.3f}" y1="{-asc_em:.3f}" x2="{lsb_em:.3f}" y2="{-desc_em:.3f}" '
-            f'stroke="#00a0e0" stroke-width="{sw_guid:.3f}" '
-            f'stroke-dasharray="{dash_a:.3f} {dash_b:.3f}"/>'
+            f'stroke="#00a0e0" stroke-width="{sw_guid:.3f}"/>'
         )
         svg.append(
             f'<line x1="{adv_em:.3f}" y1="{-asc_em:.3f}" x2="{adv_em:.3f}" y2="{-desc_em:.3f}" '
-            f'stroke="#008000" stroke-width="{sw_guid:.3f}" '
-            f'stroke-dasharray="{dash_a:.3f} {dash_b:.3f}"/>'
+            f'stroke="#008000" stroke-width="{sw_guid:.3f}"/>'
         )
         if "labels" in layer_set:
             svg.append(label(0, -asc_em - 0.04 * upem, "origin x=0", anchor="middle"))
@@ -527,4 +521,11 @@ if __name__ == "__main__":
         layers="path-original,path-hinted,bitmap-hinted,labels",
     )
     print("Wrote (outlines only):", info_outlines["out_svg"])
+
+    info_debug = glyph_em_overlay(
+        "ARIALUNI.TTF", "a", 
+        ppem=12, hinting_target="normal",
+        layers="path-original,path-hinted,bitmap-hinted,guides,baseline,bearings,bbox,labels",
+    )
+    print("Wrote (debug):", info_debug["out_svg"])
     
