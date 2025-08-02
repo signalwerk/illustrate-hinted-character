@@ -81,8 +81,8 @@ def glyph_to_svg(
     bbox_h = px(m.height)
     adv   = px(m.horiAdvance)
 
-    asc   = px(face.size.metrics.ascender)
-    desc  = px(face.size.metrics.descender)  # negative
+    asc   = px(face.size.ascender)
+    desc  = px(face.size.descender)  # negative
 
     # --- ViewBox: include metrics guides with a margin -----------------------
     margin = max(ppem * 0.2, 5)  # pixels
@@ -156,6 +156,6 @@ def glyph_to_svg(
 
 if __name__ == "__main__":
     # Example usage
-    info = glyph_to_svg("YourFont.ttf", "A", ppem=64, dpi=72, hinting_target="normal", out_svg="A_hint.svg")
+    info = glyph_to_svg("ARIALUNI.TTF", "a", ppem=12, dpi=96, hinting_target="mono", out_svg="a_hint.svg")
     print("Wrote:", info["out_svg"])
     print({k: v for k, v in info.items() if k != "out_svg"})

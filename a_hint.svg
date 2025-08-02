@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-5.000 -23.000 19.000 33.000" width="19" height="33">
+<rect x="-5.000" y="-23.000" width="19.000" height="33.000" fill="#f9f9fb"/>
+<line x1="-5.000" y1="0.000" x2="14.000" y2="0.000" stroke="#c0c0c0" stroke-dasharray="4 3"/>
+<line x1="-5.000" y1="-18.000" x2="14.000" y2="-18.000" stroke="#e0a000" stroke-dasharray="4 3"/>
+<line x1="-5.000" y1="5.000" x2="14.000" y2="5.000" stroke="#e0a000" stroke-dasharray="4 3"/>
+<text x="-2.000" y="-21.000" font-size="10" text-anchor="start" font-family="monospace">ascender</text>
+<text x="-2.000" y="-3.000" font-size="10" text-anchor="start" font-family="monospace">baseline</text>
+<text x="-2.000" y="17.000" font-size="10" text-anchor="start" font-family="monospace">descender</text>
+<line x1="0.000" y1="-18.000" x2="0.000" y2="5.000" stroke="#c0c0c0" stroke-dasharray="4 3"/>
+<text x="0.000" y="-24.000" font-size="10" text-anchor="middle" font-family="monospace">origin x=0</text>
+<line x1="1.000" y1="-18.000" x2="1.000" y2="5.000" stroke="#00a0e0" stroke-dasharray="4 3"/>
+<text x="1.000" y="-24.000" font-size="10" text-anchor="middle" font-family="monospace">LSB=1.00px</text>
+<line x1="9.000" y1="-18.000" x2="9.000" y2="5.000" stroke="#008000" stroke-dasharray="4 3"/>
+<text x="9.000" y="-24.000" font-size="10" text-anchor="middle" font-family="monospace">advance=9.00px</text>
+<rect x="1.000" y="-8.000" width="7.000" height="8.000" fill="none" stroke="#cc3333" stroke-width="1"/>
+<text x="4.000" y="4.000" font-size="10" text-anchor="start" font-family="monospace">bbox 7.00×8.00px</text>
+<path d="M 8.000 -0.000 L 7.000 -0.000 Q 7.000 -0.469 7.000 -1.234 Q 5.562 -0.000 3.891 -0.000 Q 2.547 -0.000 1.766 -0.594 Q 1.000 -1.203 1.000 -2.188 Q 1.500 -3.141 2.000 -3.750 Q 2.516 -4.359 4.391 -4.562 L 5.750 -4.734 Q 6.500 -4.844 7.000 -5.000 Q 7.000 -5.609 6.953 -5.859 Q 6.906 -6.125 6.672 -6.391 Q 6.453 -6.672 5.938 -6.828 Q 5.438 -7.000 4.578 -7.000 Q 3.500 -7.000 2.859 -6.781 Q 2.234 -6.578 2.000 -6.000 L 1.000 -6.125 Q 1.234 -7.062 2.172 -7.531 Q 3.109 -8.000 4.766 -8.000 Q 6.266 -8.000 6.969 -7.578 Q 7.672 -7.172 7.828 -6.578 Q 8.000 -5.984 8.000 -5.062 L 8.000 -3.281 Q 8.000 -1.641 8.000 -1.078 Q 8.000 -0.531 8.000 -0.000 Z M 7.000 -3.531 L 7.000 -4.000 Q 5.719 -3.656 3.859 -3.453 Q 2.000 -3.266 2.000 -2.219 Q 2.000 -1.688 2.500 -1.344 Q 3.000 -1.000 3.938 -1.000 Q 5.156 -1.000 6.078 -1.578 Q 7.000 -2.156 7.000 -3.531 Z" fill="none" stroke="#000" stroke-width="1.2"/>
+</svg>
