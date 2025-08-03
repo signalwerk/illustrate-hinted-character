@@ -90,7 +90,7 @@ def glyph_em_overlay(
     label_scale: float = 0.040,   # label font-size = UPEM * label_scale
     stroke_main: float = 0.003,   # main outline stroke = UPEM * stroke_main
     stroke_guides: float = 0.004, # guides stroke = UPEM * stroke_guides
-    margin_em: float = 0.01,      # margins as a fraction of UPEM
+    margin_em = 0.01,             # margins as a fraction of UPEM (float or [top,right,bottom,left])
     bitmap_style: str = "image",  # "image", "rects", "circles"
     bitmap_opacity: float = 1,  # opacity for bitmap layer (0.0 – 1.0)
 ):
@@ -125,7 +125,7 @@ def glyph_em_overlay(
         label_scale: Size of text labels as fraction of UPEM
         stroke_main: Outline stroke width as fraction of UPEM
         stroke_guides: Guide line stroke width as fraction of UPEM  
-        margin_em: SVG margins as fraction of UPEM
+        margin_em: SVG margins as fraction of UPEM (float for all sides, or [top,right,bottom,left] array)
         bitmap_style: How to render bitmap pixels ("image", "rects", "circles")
         bitmap_opacity: Transparency of bitmap overlay (0.0-1.0)
 
@@ -340,13 +340,40 @@ def glyph_em_overlay(
         # No bitmaps requested, use zero extents
         img_left_em = img_right_em = 0.0
 
-    # Calculate SVG viewBox in EM units with margins
-    margin = margin_em * upem
-    left  = min(0.0, lsb_em, img_left_em) - margin      # Leftmost extent
-    right = max(adv_em, lsb_em + width_em, img_right_em) + margin  # Rightmost extent
-    top_vb    = -(asc_em + margin)                       # Top of viewBox (SVG Y-down)
-    height_vb = (asc_em - desc_em) + 2 * margin          # Total height
-    width_vb  = right - left                             # Total width
+    # Parse margin_em parameter - supports CSS-like margin syntax:
+    # - Single float: same margin for all sides
+    # - [top, right, bottom, left]: individual margins for each side
+    # - [vertical, horizontal]: top/bottom and left/right margins
+    # - [value]: single value in array format
+    # Values can be negative to crop into content area
+    if isinstance(margin_em, (list, tuple)):
+        if len(margin_em) == 4:
+            margin_top, margin_right, margin_bottom, margin_left = margin_em
+        elif len(margin_em) == 2:
+            # [vertical, horizontal] format
+            margin_top = margin_bottom = margin_em[0]
+            margin_right = margin_left = margin_em[1]
+        elif len(margin_em) == 1:
+            # Single value in array
+            margin_top = margin_right = margin_bottom = margin_left = margin_em[0]
+        else:
+            raise ValueError("margin_em array must have 1, 2, or 4 values")
+    else:
+        # Single value for all sides
+        margin_top = margin_right = margin_bottom = margin_left = margin_em
+    
+    # Convert margins to EM units
+    margin_top_em = margin_top * upem
+    margin_right_em = margin_right * upem
+    margin_bottom_em = margin_bottom * upem
+    margin_left_em = margin_left * upem
+    
+    # Calculate SVG viewBox in EM units with individual margins
+    left  = min(0.0, lsb_em, img_left_em) - margin_left_em     # Leftmost extent
+    right = max(adv_em, lsb_em + width_em, img_right_em) + margin_right_em  # Rightmost extent
+    top_vb    = -(asc_em + margin_top_em)                       # Top of viewBox (SVG Y-down)
+    height_vb = (asc_em - desc_em) + margin_top_em + margin_bottom_em  # Total height
+    width_vb  = right - left                                    # Total width
 
     # Scale all visual elements proportionally to UPEM for resolution independence
     fs = label_scale * upem        # Font size for labels
@@ -609,14 +636,16 @@ if __name__ == "__main__":
     Example usage demonstrating different visualization modes.
     Each example shows different aspects of font hinting effects.
     """
+    margin_em=[-.45, 0, -0.15, 0]  # [top, right, bottom, left]
     
     # Example 1: Original design vs. unhinted bitmap rendering
     info_1 = glyph_em_overlay(
         "ARIALUNI.TTF", "a",
         ppem=12, hinting_target="mono",
-        layers="path-original,bitmap-original,labels",
+        layers="path-original,bitmap-original",
         bitmap_style="circles",
-        bitmap_opacity=0.25
+        bitmap_opacity=0.25,
+        margin_em=margin_em,
     )
     print("Wrote original vs unhinted bitmap:", info_1["out_svg"])
     
@@ -624,9 +653,10 @@ if __name__ == "__main__":
     info_2 = glyph_em_overlay(
         "ARIALUNI.TTF", "a", 
         ppem=12, hinting_target="mono",
-        layers="path-original,path-hinted,bitmap-hinted,labels",
+        layers="path-original,path-hinted,bitmap-hinted",
         bitmap_style="circles",
-        bitmap_opacity=0.25
+        bitmap_opacity=0.25,
+        margin_em=margin_em,
     )
     print("Wrote hinting comparison:", info_2["out_svg"])
 
@@ -634,8 +664,9 @@ if __name__ == "__main__":
     info_3 = glyph_em_overlay(
         "ARIALUNI.TTF", "a", 
         ppem=12, hinting_target="normal",
-        layers="path-original,bitmap-original,labels",
+        layers="path-original,bitmap-original",
         bitmap_style="rects",
+        margin_em=margin_em,
     )
     print("Wrote bitmap analysis:", info_3["out_svg"])
 
@@ -643,7 +674,9 @@ if __name__ == "__main__":
     info_4 = glyph_em_overlay(
         "ARIALUNI.TTF", "a", 
         ppem=12, hinting_target="normal",
-        layers="path-original,path-hinted,bitmap-hinted,labels",
+        layers="path-original,path-hinted,bitmap-hinted",
+        margin_em=margin_em,
+        bitmap_style="rects",
     )
     print("Wrote outline comparison:", info_4["out_svg"])
 
@@ -652,5 +685,6 @@ if __name__ == "__main__":
         "ARIALUNI.TTF", "a", 
         ppem=12, hinting_target="normal",
         layers="path-original,path-hinted,bitmap-hinted,guides,baseline,bearings,bbox,labels",
+        bitmap_style="rects",
     )
     print("Wrote complete analysis:", info_5["out_svg"])
