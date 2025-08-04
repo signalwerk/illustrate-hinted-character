@@ -729,7 +729,7 @@ if __name__ == "__main__":
         font_path, char, 
         output_filename="./docs/asset/path-hinted_mono-bitmap-hinted.svg",
         ppem=ppem, hinting_target="mono",
-        layers="path-original,path-hinted,bitmap-hinted",
+        layers="path-hinted,bitmap-hinted",
         bitmap_style="rects",
         bitmap_opacity=0.25,
         margin_em=margin_em,
