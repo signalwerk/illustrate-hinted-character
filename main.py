@@ -679,6 +679,8 @@ if __name__ == "__main__":
     # font path
     font_path = "ARIALUNI.TTF"
     # font_path = "OpenSans-VariableFont_wdth,wght.ttf"
+    # font_path = "WorkSans-VariableFont_wght.ttf"
+    # font_path = "Roboto[ital,wdth,wght].ttf"
 
     # font size
     ppem = 12
@@ -715,7 +717,7 @@ if __name__ == "__main__":
     info = glyph_em_overlay(
         font_path, char, 
         output_filename="./docs/asset/path-original_path-hinted.svg",
-        ppem=ppem,
+        ppem=ppem, hinting_target="mono",
         layers="path-original,path-hinted",
         bitmap_opacity=0.25,
         margin_em=margin_em,
