@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>title</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Font Hinting Visualization</h1>
+      <p>
+        The following images show how font hinting affects glyph outlines and
+        their bitmap rendering.
+      </p>
+      <p class="technical-details">
+        All images were generated with Freetype version 2.13.1.
+      </p>
+    </header>
+    <main>
+      <div class="container">
+        <div class="row">
+          <div class="col-12">
+            <h2>Outline and bitmap (monochrome) rendering with no hinting</h2>
+            <p class="technical-details">
+              Font: Arial Unicode · Font size: 12 px (12 PPEM) · Hinting: off
+            </p>
+          </div>
+          <div class="col-6">
+            <img src="asset/path-original.svg" alt="Outline only" />
+          </div>
+          <div class="col-6">
+            <img
+              src="asset/path-original_mono-bitmap-original.svg"
+              alt="Outline + bitmap (mono)"
+            />
+          </div>
+        </div>
+      </div>
+      <div class="container">
+        <div class="row">
+          <div class="col-12">
+            <h2>Outline and bitmap (monochrome) rendering with hinting</h2>
+            <p class="technical-details">
+              Font: Arial Unicode · Font size: 12 px (12 PPEM) · Hinting: on (blue dotted outline + bitmap)
+            </p>
+          </div>
+          <div class="col-6">
+            <img
+              src="asset/path-original_path-hinted.svg"
+              alt="Outline + bitmap (mono)"
+            />
+          </div>
+          <div class="col-6">
+            <img
+              src="asset/path-hinted_mono-bitmap-hinted.svg"
+              alt="Outline + bitmap (mono)"
+            />
+          </div>
+        </div>
+      </div>
+      <div class="container">
+        <div class="row">
+          <div class="col-12">
+            <h2>Outline and bitmap (grayscale) rendering without and with hinting</h2>
+            <p class="technical-details">
+              Font: Arial Unicode · Font size: 12 px (12 PPEM) · Hinting: off (left) and on (right)
+            </p>
+          </div>
+          <div class="col-6">
+            <img
+              src="asset/path-original_8bit-bitmap-original.svg"
+              alt="Outline + bitmap (mono)"
+            />
+          </div>
+          <div class="col-6">
+            <img
+              src="asset/path-hinted_8bit-bitmap-hinted.svg"
+              alt="Outline + bitmap (mono)"
+            />
+          </div>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

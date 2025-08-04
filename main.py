@@ -31,6 +31,10 @@ _RENDER_MODE = {
     "lcd_v":  ft.FT_RENDER_MODE_NORMAL,
 }
 
+# print the freetype version
+version = ".".join(map(str, ft.version()))
+print(f"Freetype version: {version}")
+
 def _png_data_uri_from_bitmap(bmp: ft.Bitmap) -> str:
     """
     Convert a FreeType bitmap to a PNG data URI for embedding in SVG.
@@ -85,7 +89,7 @@ def glyph_em_overlay(
     hinting_target: str = "normal",
     use_hinted_bitmap: bool = True,  # whether to render bitmap from hinted or unhinted outline
     layers: str = "path-original,path-hinted,bitmap-hinted,guides,bearings,bbox,labels",  # comma-separated list of layers
-    # out_svg: str = "glyph_em.svg",
+    output_filename: str = None,  # custom filename override (if None, auto-generates filename)
     # visual tuning (all in EM units, proportional to UPEM by default)
     label_scale: float = 0.040,   # label font-size = UPEM * label_scale
     stroke_main: float = 0.003,   # main outline stroke = UPEM * stroke_main
@@ -122,6 +126,8 @@ def glyph_em_overlay(
                 - bearings: Left side bearing and advance lines (blue/green)
                 - bbox: Glyph bounding box (red)
                 - labels: Text annotations and legend
+        output_filename: Custom filename for output SVG file. If None, auto-generates 
+                        filename based on character, hinting target, and layers
         label_scale: Size of text labels as fraction of UPEM
         stroke_main: Outline stroke width as fraction of UPEM
         stroke_guides: Guide line stroke width as fraction of UPEM  
@@ -402,6 +408,7 @@ def glyph_em_overlay(
         f'viewBox="{left:.3f} {top_vb:.3f} {width_vb:.3f} {height_vb:.3f}" '
         f'width="{width_vb:.0f}" height="{height_vb:.0f}">'
     )
+    svg.append(f'<!-- Freetype version: {version} -->')
     svg.append('<rect x="{:.3f}" y="{:.3f}" width="{:.3f}" height="{:.3f}" fill="#fff"/>'
                .format(left, top_vb, width_vb, height_vb))
 
@@ -611,10 +618,14 @@ def glyph_em_overlay(
     # =================================================================
     # STEP 6: Save output file with descriptive name
     # =================================================================
-    # Generate filename based on character, hinting type, and active layers
-    layer_suffix = "_".join(sorted(layer_set)) if layer_set else "empty"
-    layer_suffix = layer_suffix.replace("-", "").replace(",", "_")  # Clean up for filesystem
-    out_svg = f"{char}_{hinting_target}_{layer_suffix}.svg"
+    # Use custom filename if provided, otherwise generate based on character, hinting type, and active layers
+    if output_filename is not None:
+        out_svg = output_filename
+    else:
+        layer_suffix = "_".join(sorted(layer_set)) if layer_set else "empty"
+        layer_suffix = layer_suffix.replace("-", "").replace(",", "_")  # Clean up for filesystem
+        out_svg = f"{char}_{hinting_target}_{layer_suffix}.svg"
+    
     Path(out_svg).write_text("\n".join(svg), encoding="utf-8")
 
     return {
@@ -636,55 +647,92 @@ if __name__ == "__main__":
     Example usage demonstrating different visualization modes.
     Each example shows different aspects of font hinting effects.
     """
+
+    # font path
+    font_path = "ARIALUNI.TTF"
+
+    # font size
+    ppem = 12
+
+    # character
+    char = "a"
+
+    # let's crop the output svg to the glyph only (remove some whitespace)
     margin_em=[-.45, 0, -0.15, 0]  # [top, right, bottom, left]
     
-    # Example 1: Original design vs. unhinted bitmap rendering
-    info_1 = glyph_em_overlay(
-        "ARIALUNI.TTF", "a",
-        ppem=12, hinting_target="mono",
+    # Outline only
+    info = glyph_em_overlay(
+        font_path, char,
+        output_filename="./docs/asset/path-original.svg",
+        ppem=ppem, hinting_target="mono",
+        layers="path-original",
+        margin_em=margin_em,
+    )
+    print("Wrote file:", info["out_svg"])
+
+    # Outline + bitmap (mono)
+    info = glyph_em_overlay(
+        font_path, char,
+        output_filename="./docs/asset/path-original_mono-bitmap-original.svg",
+        ppem=ppem, hinting_target="mono",
         layers="path-original,bitmap-original",
         bitmap_style="circles",
         bitmap_opacity=0.25,
         margin_em=margin_em,
     )
-    print("Wrote original vs unhinted bitmap:", info_1["out_svg"])
+    print("Wrote file:", info["out_svg"])
     
-    # Example 2: Comparison of original outline, hinted outline, and hinted bitmap
-    info_2 = glyph_em_overlay(
-        "ARIALUNI.TTF", "a", 
-        ppem=12, hinting_target="mono",
-        layers="path-original,path-hinted,bitmap-hinted",
+    # Comparison of original outline, hinted outline
+    info = glyph_em_overlay(
+        font_path, char, 
+        output_filename="./docs/asset/path-original_path-hinted.svg",
+        ppem=ppem,
+        layers="path-original,path-hinted",
         bitmap_style="circles",
         bitmap_opacity=0.25,
         margin_em=margin_em,
     )
-    print("Wrote hinting comparison:", info_2["out_svg"])
+    print("Wrote file:", info["out_svg"])
 
-    # Example 3: Focus on bitmap rendering differences
-    info_3 = glyph_em_overlay(
-        "ARIALUNI.TTF", "a", 
-        ppem=12, hinting_target="normal",
+    # Outline hinted + bitmap (mono)
+    info = glyph_em_overlay(
+        font_path, char, 
+        output_filename="./docs/asset/path-hinted_mono-bitmap-hinted.svg",
+        ppem=ppem, hinting_target="mono",
+        layers="path-hinted,bitmap-hinted",
+        bitmap_style="circles",
+        bitmap_opacity=0.25,
+        margin_em=margin_em,
+    )
+    print("Wrote file:", info["out_svg"])
+
+    # Outline + bitmap (normal)
+    info = glyph_em_overlay(
+        font_path, char, 
+        output_filename="./docs/asset/path-original_8bit-bitmap-original.svg",
+        ppem=ppem, hinting_target="normal",
         layers="path-original,bitmap-original",
         bitmap_style="rects",
         margin_em=margin_em,
     )
-    print("Wrote bitmap analysis:", info_3["out_svg"])
+    print("Wrote file:", info["out_svg"])
 
-    # Example 4: Outline comparison only
-    info_4 = glyph_em_overlay(
-        "ARIALUNI.TTF", "a", 
-        ppem=12, hinting_target="normal",
-        layers="path-original,path-hinted,bitmap-hinted",
+    # Outline + bitmap (normal)
+    info = glyph_em_overlay(
+        font_path, char, 
+        output_filename="./docs/asset/path-hinted_8bit-bitmap-hinted.svg",
+        ppem=ppem, hinting_target="normal",
+        layers="path-hinted,bitmap-hinted",
         margin_em=margin_em,
         bitmap_style="rects",
     )
-    print("Wrote outline comparison:", info_4["out_svg"])
+    print("Wrote  file:", info["out_svg"])
 
     # Example 5: Complete analysis with all guides and metrics
-    info_5 = glyph_em_overlay(
-        "ARIALUNI.TTF", "a", 
-        ppem=12, hinting_target="normal",
+    info = glyph_em_overlay(
+        font_path, char, 
+        ppem=ppem, hinting_target="normal",
         layers="path-original,path-hinted,bitmap-hinted,guides,baseline,bearings,bbox,labels",
         bitmap_style="rects",
     )
-    print("Wrote complete analysis:", info_5["out_svg"])
+    print("Wrote file:", info["out_svg"])

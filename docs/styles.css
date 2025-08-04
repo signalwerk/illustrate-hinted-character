@@ -1,0 +1,140 @@
+@import url("https://fonts.signalwerk.ch/css/latest/family=Work+Sans:ital,wght@0,100..900;1,100..900.css");
+
+:root {
+  --color-green: #006984;
+  --color-blue: #0054a2;
+  --color-black: #121212;
+  --color-white: #ffffff;
+  --color-gray: #767778;
+  --color-primary: var(--color-blue);
+
+  --link-color: var(--color-primary);
+  --link-color--visited: var(--color-gray);
+  --selection-color: var(--color-white);
+  --selection-color-bg: var(--color-primary);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  font: inherit; /* Get rid of all font sizes and heights */
+}
+
+html {
+  font-family: "Work Sans", sans-serif;
+  font-weight: 400;
+  font-size: 18px;
+  line-height: 1.5;
+  color: var(--color-black);
+  background-color: var(--color-white);
+}
+
+::selection {
+  color: var(--selection-color);
+  background: var(--selection-color-bg);
+  text-shadow: none;
+}
+
+ol,
+ul {
+  list-style: none;
+  margin-bottom: 0.2rem;
+}
+
+p {
+  margin-bottom: 0.2rem;
+  text-wrap: pretty;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 700;
+  margin-top: 1rem;
+  margin-bottom: 0.2rem;
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: 1.2rem;
+}
+
+h2 {
+  font-size: 1rem;
+}
+
+h3 {
+  font-size: 0.8rem;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* a-tag */
+
+a {
+  text-decoration: none;
+  color: var(--link-color);
+  text-underline-offset: 0.3em;
+  text-decoration: underline currentColor;
+  text-decoration-thickness: 0.15em;
+}
+
+a[href^="http"]::after {
+  content: "↗";
+}
+
+a:visited {
+  color: var(--link-color--visited);
+}
+
+a:hover {
+  color: inherit;
+}
+
+small {
+  font-size: 0.8em;
+}
+
+.technical-details {
+  font-size: 0.8em;
+  color: var(--color-gray);
+}
+
+.container {
+  margin-top: 2rem;
+}
+
+header,
+main {
+  width: 92%;
+  max-width: 38rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  grid-column-gap: 1.5rem;
+}
+
+.col-12 {
+  grid-column: span 12;
+}
+
+.col-6 {
+  grid-column: span 6;
+}
