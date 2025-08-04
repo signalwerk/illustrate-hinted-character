@@ -762,6 +762,7 @@ if __name__ == "__main__":
     # Example 5: Complete analysis with all guides and metrics
     info = glyph_em_overlay(
         font_path, char, 
+        output_filename="./docs/asset/debug.svg",
         ppem=ppem, hinting_target="normal",
         layers="path-original,path-hinted,bitmap-hinted,guides,baseline,bearings,bbox,labels",
         bitmap_style="rects",

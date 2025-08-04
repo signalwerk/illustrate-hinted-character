@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>title</title>
+    <title>Font Hinting Visualization</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -27,12 +27,12 @@
             </p>
           </div>
           <div class="col-6">
-            <img src="asset/path-original.svg" alt="Outline only" />
+            <img src="asset/path-original.svg" alt="Outline only no hinting" />
           </div>
           <div class="col-6">
             <img
               src="asset/path-original_mono-bitmap-original.svg"
-              alt="Outline + bitmap (mono)"
+              alt="Outline + bitmap (mono) no hinting"
             />
           </div>
         </div>
@@ -42,19 +42,20 @@
           <div class="col-12">
             <h2>Outline and bitmap (monochrome) rendering with hinting</h2>
             <p class="technical-details">
-              Font: Arial Unicode · Font size: 12 px (12 PPEM) · Hinting: on (blue dotted outline + bitmap)
+              Font: Arial Unicode · Font size: 12 px (12 PPEM) · Hinting: on
+              (blue dotted outline + bitmap)
             </p>
           </div>
           <div class="col-6">
             <img
               src="asset/path-original_path-hinted.svg"
-              alt="Outline + bitmap (mono)"
+              alt="Outline original + hinted outline"
             />
           </div>
           <div class="col-6">
             <img
               src="asset/path-hinted_mono-bitmap-hinted.svg"
-              alt="Outline + bitmap (mono)"
+              alt="Hinted outline + hinted bitmap (mono)"
             />
           </div>
         </div>
@@ -62,22 +63,37 @@
       <div class="container">
         <div class="row">
           <div class="col-12">
-            <h2>Outline and bitmap (grayscale) rendering without and with hinting</h2>
+            <h2>
+              Outline and bitmap (grayscale) rendering without and with hinting
+            </h2>
             <p class="technical-details">
-              Font: Arial Unicode · Font size: 12 px (12 PPEM) · Hinting: off (left) and on (right)
+              Font: Arial Unicode · Font size: 12 px (12 PPEM) · Hinting: off
+              (left) and on (right)
             </p>
           </div>
           <div class="col-6">
             <img
               src="asset/path-original_8bit-bitmap-original.svg"
-              alt="Outline + bitmap (mono)"
+              alt="Outline + bitmap (grayscale) no hinting"
             />
           </div>
           <div class="col-6">
             <img
               src="asset/path-hinted_8bit-bitmap-hinted.svg"
-              alt="Outline + bitmap (mono)"
+              alt="Hinted outline + hinted bitmap (grayscale)"
             />
+          </div>
+        </div>
+      </div>
+      <div class="container">
+        <div class="row">
+          <div class="col-12">
+            <h2>View of the glyphs structure and metrics</h2>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-3">
+            <img src="asset/debug.svg" alt="Glyph structure and metrics" />
           </div>
         </div>
       </div>

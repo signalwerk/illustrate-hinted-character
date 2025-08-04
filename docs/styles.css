@@ -138,3 +138,7 @@ main {
 .col-6 {
   grid-column: span 6;
 }
+
+.col-3 {
+  grid-column: span 3;
+}
