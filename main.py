@@ -316,26 +316,19 @@ def glyph_em_overlay(
         hinted_bmp_left_px = hinted_slot.bitmap_left  # Bitmap position relative to origin
         hinted_bmp_top_px  = hinted_slot.bitmap_top
         
-        # Convert hinted glyph metrics from 26.6 pixels to float pixels
-        hinted_lsb_px  = hm.horiBearingX / 64.0  # Left side bearing in pixels
-        hinted_top_px  = hm.horiBearingY / 64.0  # Top bearing in pixels
-        
-        # Calculate alignment offset: difference between glyph metrics and bitmap position
-        # This accounts for how FreeType positions the bitmap relative to the glyph metrics
-        hinted_dx_px = hinted_lsb_px - hinted_bmp_left_px
-        hinted_dy_px = hinted_bmp_top_px - hinted_top_px
-        hinted_dx_em = hinted_dx_px * (upem / float(x_ppem))
-        hinted_dy_em = hinted_dy_px * (upem / float(y_ppem))
+        # For proper alignment, position bitmap directly using FreeType's calculated position
+        # bitmap_left and bitmap_top already give us the correct position relative to the baseline and origin
+        # No additional offset calculation needed - FreeType has already positioned it correctly
         
         # Store all bitmap data converted to EM coordinates
         bitmaps['hinted'] = {
             'bitmap': hinted_bmp,
-            'img_x_em': hinted_bmp_left_px * (upem / float(x_ppem)),   # Bitmap left edge
-            'img_y_em': -hinted_bmp_top_px * (upem / float(y_ppem)),   # Bitmap top edge (Y-flipped)
+            'img_x_em': hinted_bmp_left_px * (upem / float(x_ppem)),   # Bitmap left edge (already correctly positioned)
+            'img_y_em': -hinted_bmp_top_px * (upem / float(y_ppem)),   # Bitmap top edge (Y-flipped, baseline-relative)
             'img_w_em': hinted_bmp.width * (upem / float(x_ppem)),     # Bitmap width
             'img_h_em': hinted_bmp.rows * (upem / float(y_ppem)),      # Bitmap height
-            'dx_em': hinted_dx_em,  # Horizontal alignment offset
-            'dy_em': hinted_dy_em,  # Vertical alignment offset
+            'dx_em': 0.0,  # No additional offset needed - FreeType positioning is correct
+            'dy_em': 0.0,  # No additional offset needed - FreeType positioning is correct
             'png_uri': _png_data_uri_from_bitmap(hinted_bmp)  # Base64 PNG for SVG embedding
         }
     
@@ -349,10 +342,8 @@ def glyph_em_overlay(
         unhinted_bmp_left_px = unhinted_slot.bitmap_left
         unhinted_bmp_top_px  = unhinted_slot.bitmap_top
         
-        # For unhinted bitmap, we don't apply bearing compensation
-        # This shows the raw bitmap position as FreeType calculates it
-        unhinted_dx_em = 0.0
-        unhinted_dy_em = 0.0
+        # For unhinted bitmap, also use FreeType's positioning directly
+        # This ensures consistent baseline and origin alignment with the hinted version
         
         bitmaps['unhinted'] = {
             'bitmap': unhinted_bmp,
@@ -360,8 +351,8 @@ def glyph_em_overlay(
             'img_y_em': -unhinted_bmp_top_px * (upem / float(y_ppem)),
             'img_w_em': unhinted_bmp.width * (upem / float(x_ppem)),
             'img_h_em': unhinted_bmp.rows * (upem / float(y_ppem)),
-            'dx_em': unhinted_dx_em,
-            'dy_em': unhinted_dy_em,
+            'dx_em': 0.0,  # No additional offset needed
+            'dy_em': 0.0,  # No additional offset needed
             'png_uri': _png_data_uri_from_bitmap(unhinted_bmp)
         }
 
@@ -452,8 +443,6 @@ def glyph_em_overlay(
         img_y_em = bitmap_info['img_y_em']
         img_w_em = bitmap_info['img_w_em']
         img_h_em = bitmap_info['img_h_em']
-        dx_em = bitmap_info['dx_em']
-        dy_em = bitmap_info['dy_em']
         png_uri = bitmap_info['png_uri']
         
         if bitmap_style == "image":
@@ -462,7 +451,7 @@ def glyph_em_overlay(
             svg.append(
                 f'<image x="{img_x_em:.3f}" y="{img_y_em:.3f}" '
                 f'width="{img_w_em:.3f}" height="{img_h_em:.3f}" '
-                f'href="{png_uri}" transform="translate({dx_em:.3f},{dy_em:.3f})" '
+                f'href="{png_uri}" '
                 f'style="image-rendering: pixelated;{opacity_style}"/>'
             )
         else:
@@ -472,8 +461,6 @@ def glyph_em_overlay(
             w, h, pitch = bmp.width, bmp.rows, bmp.pitch
             px_w = upem / float(x_ppem)  # Pixel width in EM units
             px_h = upem / float(y_ppem)  # Pixel height in EM units
-            dx_px = dx_em / (upem / float(x_ppem))  # Alignment offset in pixels
-            dy_px = dy_em / (upem / float(y_ppem))
             
             for y in range(h):
                 # Pre-extract row for grayscale bitmaps (optimization)
@@ -493,9 +480,9 @@ def glyph_em_overlay(
                     if a == 0:
                         continue  # Skip transparent pixels
                         
-                    # Calculate pixel position in EM coordinates
-                    cx = img_x_em + (x + dx_px) * px_w
-                    cy = img_y_em + (y + dy_px) * px_h
+                    # Calculate pixel position in EM coordinates (no additional offset needed)
+                    cx = img_x_em + x * px_w
+                    cy = img_y_em + y * px_h
                     
                     # Apply scaling factor and center the scaled shape within the pixel
                     scaled_w = px_w * bitmap_scale
@@ -690,7 +677,8 @@ if __name__ == "__main__":
     """
 
     # font path
-    font_path = "OpenSans-VariableFont_wdth,wght.ttf"
+    font_path = "ARIALUNI.TTF"
+    # font_path = "OpenSans-VariableFont_wdth,wght.ttf"
 
     # font size
     ppem = 12
@@ -739,7 +727,7 @@ if __name__ == "__main__":
         font_path, char, 
         output_filename="./docs/asset/path-hinted_mono-bitmap-hinted.svg",
         ppem=ppem, hinting_target="mono",
-        layers="path-hinted,bitmap-hinted",
+        layers="path-original,path-hinted,bitmap-hinted",
         bitmap_style="rects",
         bitmap_opacity=0.25,
         margin_em=margin_em,
