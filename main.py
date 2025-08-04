@@ -97,6 +97,7 @@ def glyph_em_overlay(
     margin_em = 0.01,             # margins as a fraction of UPEM (float or [top,right,bottom,left])
     bitmap_style: str = "image",  # "image", "rects", "circles"
     bitmap_opacity: float = 1,  # opacity for bitmap layer (0.0 – 1.0)
+    bitmap_scale: float = 1,  # scale factor for bitmap pixels (0.9 makes them 90% size, centered)
 ):
     """
     Generate an SVG visualization showing how font hinting affects glyph rendering.
@@ -134,6 +135,7 @@ def glyph_em_overlay(
         margin_em: SVG margins as fraction of UPEM (float for all sides, or [top,right,bottom,left] array)
         bitmap_style: How to render bitmap pixels ("image", "rects", "circles")
         bitmap_opacity: Transparency of bitmap overlay (0.0-1.0)
+        bitmap_scale: Scale factor for bitmap pixels (1.0 = full size, 0.9 = 90% size, centered)
 
     Returns:
         Dictionary with output file path, metrics, and generation details
@@ -494,8 +496,12 @@ def glyph_em_overlay(
                     # Calculate pixel position in EM coordinates
                     cx = img_x_em + (x + dx_px) * px_w
                     cy = img_y_em + (y + dy_px) * px_h
-                    size_x = px_w
-                    size_y = px_h
+                    
+                    # Apply scaling factor and center the scaled shape within the pixel
+                    scaled_w = px_w * bitmap_scale
+                    scaled_h = px_h * bitmap_scale
+                    offset_x = (px_w - scaled_w) * 0.5  # Center horizontally
+                    offset_y = (px_h - scaled_h) * 0.5  # Center vertically
                     
                     # Convert alpha to grayscale color (higher alpha = darker)
                     intensity = a / 255.0
@@ -506,15 +512,19 @@ def glyph_em_overlay(
                     
                     if bitmap_style == "rects":
                         # Rectangular pixels (most accurate representation)
+                        rect_x = cx + offset_x
+                        rect_y = cy + offset_y
                         svg.append(
-                            f'<rect x="{cx:.3f}" y="{cy:.3f}" width="{size_x:.3f}" height="{size_y:.3f}" '
+                            f'<rect x="{rect_x:.3f}" y="{rect_y:.3f}" width="{scaled_w:.3f}" height="{scaled_h:.3f}" '
                             f'fill="{fill_color}"{opacity_attr}/>'
                         )
                     elif bitmap_style == "circles":
                         # Circular pixels (softer appearance)
-                        r = px_w * 0.5
+                        r = min(scaled_w, scaled_h) * 0.5  # Use smaller dimension for radius to maintain aspect
+                        circle_cx = cx + px_w * 0.5  # Center of original pixel
+                        circle_cy = cy + px_h * 0.5
                         svg.append(
-                            f'<circle cx="{cx + r:.3f}" cy="{cy + r:.3f}" r="{r:.3f}" '
+                            f'<circle cx="{circle_cx:.3f}" cy="{circle_cy:.3f}" r="{r:.3f}" '
                             f'fill="{fill_color}"{opacity_attr}/>'
                         )
 
@@ -680,7 +690,7 @@ if __name__ == "__main__":
     """
 
     # font path
-    font_path = "ARIALUNI.TTF"
+    font_path = "OpenSans-VariableFont_wdth,wght.ttf"
 
     # font size
     ppem = 12
@@ -707,7 +717,7 @@ if __name__ == "__main__":
         output_filename="./docs/asset/path-original_mono-bitmap-original.svg",
         ppem=ppem, hinting_target="mono",
         layers="path-original,bitmap-original",
-        bitmap_style="circles",
+        bitmap_style="rects",
         bitmap_opacity=0.25,
         margin_em=margin_em,
     )
@@ -719,7 +729,6 @@ if __name__ == "__main__":
         output_filename="./docs/asset/path-original_path-hinted.svg",
         ppem=ppem,
         layers="path-original,path-hinted",
-        bitmap_style="circles",
         bitmap_opacity=0.25,
         margin_em=margin_em,
     )
@@ -731,7 +740,7 @@ if __name__ == "__main__":
         output_filename="./docs/asset/path-hinted_mono-bitmap-hinted.svg",
         ppem=ppem, hinting_target="mono",
         layers="path-hinted,bitmap-hinted",
-        bitmap_style="circles",
+        bitmap_style="rects",
         bitmap_opacity=0.25,
         margin_em=margin_em,
     )
@@ -759,7 +768,7 @@ if __name__ == "__main__":
     )
     print("Wrote  file:", info["out_svg"])
 
-    # Example 5: Complete analysis with all guides and metrics
+    # Complete analysis with all guides and metrics
     info = glyph_em_overlay(
         font_path, char, 
         output_filename="./docs/asset/debug.svg",
