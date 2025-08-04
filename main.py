@@ -143,6 +143,37 @@ def glyph_em_overlay(
     """
     # Load the font face
     face = ft.Face(font_path)
+    
+    # Set variable font coordinates if this is a variable font
+    # Weight: Regular 400, Width: Normal 100
+    try:
+        # Get the variable axes information
+        var_info = face.get_variation_info()
+        if var_info and len(var_info.axes) > 0:
+            # Set coordinates for Weight=400 and Width=100
+            coords = []
+            axes_info = []
+            
+            for axis in var_info.axes:
+                tag = axis.tag if isinstance(axis.tag, str) else axis.tag.decode()
+                if tag == 'wght':  # Weight axis
+                    coords.append(400.0)
+                    axes_info.append(f'{tag}: 400.0')
+                elif tag == 'wdth':  # Width axis  
+                    coords.append(100.0)
+                    axes_info.append(f'{tag}: 100.0')
+                else:
+                    # Use default value for other axes
+                    coords.append(axis.default)
+                    axes_info.append(f'{tag}: {axis.default}')
+            
+            if coords:
+                face.set_var_design_coords(coords)
+                print(f"Set variable font coordinates: [{', '.join(axes_info)}]")
+    except Exception as e:
+        print(f"Note: Could not set variable font coordinates: {e}")
+        print("Proceeding with default font instance...")
+    
     # Get the font's units per EM (typically 1000, 2048, or 4096)
     # This is the resolution of the original font design grid
     upem = face.units_per_EM
