@@ -676,20 +676,17 @@ if __name__ == "__main__":
     Each example shows different aspects of font hinting effects.
     """
 
-    # font path
-    font_path = "ARIALUNI.TTF"
-    # font_path = "OpenSans-VariableFont_wdth,wght.ttf"
-    # font_path = "WorkSans-VariableFont_wght.ttf"
-    # font_path = "Roboto[ital,wdth,wght].ttf"
+
+    font_path = "Ubuntu-R.ttf"
 
     # font size
-    ppem = 12
+    ppem = 16
 
     # character
     char = "a"
 
     # let's crop the output svg to the glyph only (remove some whitespace)
-    margin_em=[-.45, 0, -0.15, 0]  # [top, right, bottom, left]
+    margin_em=[-.35, 0, -0.1, 0]  # [top, right, bottom, left]
     
     # Outline only
     info = glyph_em_overlay(
