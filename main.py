@@ -10,6 +10,7 @@ Usage: python main.py
 """
 
 import freetype as ft
+from fontTools.ttLib import TTFont
 from pathlib import Path
 from io import BytesIO
 from base64 import b64encode
@@ -543,9 +544,44 @@ def glyph_em_overlay(
             f'<line id="descender" x1="{left:.3f}" y1="{-desc_em:.3f}" x2="{right:.3f}" y2="{-desc_em:.3f}" '
             f'stroke="#e0a000" stroke-width="{sw_guid:.3f}"/>'
         )
+        
+        # Get proper x-height from OS/2 table or fallback to glyph measurement
+        x_height_em = None
+        x_height_source = "fallback"
+
+        
+        try:
+            # Try to get x-height from OS/2 table (most accurate)
+            ttfont = TTFont(font_path)
+            original_os2_table = ttfont['OS/2']
+            if hasattr(original_os2_table, 'sxHeight') and original_os2_table.sxHeight > 0:
+                x_height_em = float(original_os2_table.sxHeight)
+                x_height_source = "OS/2"
+
+        except:
+            pass
+            
+        if x_height_em is None:
+            try:
+                # Fallback: measure the 'x' glyph height
+                face.load_char('x', ft.FT_LOAD_NO_HINTING | ft.FT_LOAD_NO_SCALE)
+                x_glyph = face.glyph
+                x_height_em = float(x_glyph.metrics.height)
+                x_height_source = "glyph 'x'"
+            except:
+                x_height_em = 0
+                x_height_source = "unknown"
+        
+        # x-height line (height of lowercase letters like 'x', 'a')
+        svg.append(
+            f'<line id="x-height" x1="{left:.3f}" y1="{-x_height_em:.3f}" x2="{right:.3f}" y2="{-x_height_em:.3f}" '
+            f'stroke="#e0a000" stroke-width="{sw_guid:.3f}"/>'
+        )
+
         if "labels" in layer_set:
-            svg.append(label(left + 0.02 * upem, -asc_em - 0.02 * upem, "ascender"))
-            svg.append(label(left + 0.02 * upem, -desc_em + 0.06 * upem, "descender"))
+            svg.append(label(left + 0.02 * upem, -asc_em - 0.02 * upem, f"ascender={int(asc_em)}"))
+            svg.append(label(left + 0.02 * upem, -desc_em + 0.04 * upem, f"descender={int(desc_em)}"))
+            svg.append(label(left + 0.02 * upem, -x_height_em - 0.02 * upem, f"x-height={int(x_height_em)} ({x_height_source})"))
 
     # Baseline (Y=0, where most letters sit)
     if "baseline" in layer_set:
@@ -554,7 +590,7 @@ def glyph_em_overlay(
             f'stroke="#c0c0c0" stroke-width="{sw_guid:.3f}"/>'
         )
         if "labels" in layer_set:
-            svg.append(label(left + 0.02 * upem, -0.02 * upem, "baseline"))
+            svg.append(label(left + 0.02 * upem, -0.02 * upem, "baseline=0"))
 
     # Spacing and positioning guides (from original EM metrics)
     if "bearings" in layer_set:
@@ -574,11 +610,11 @@ def glyph_em_overlay(
             f'stroke="#008000" stroke-width="{sw_guid:.3f}"/>'
         )
         if "labels" in layer_set:
-            svg.append(label(0 - 0.02 * upem, 0 + 0.15 * upem, "origin x=0 ", anchor="end"))
-            svg.append(label(lsb_em + 0.02 * upem, 0 + 0.15 * upem, f"LSB={lsb_em:.1f}", anchor="start"))
-            svg.append(label(adv_em + 0.02 * upem, 0 + 0.15 * upem, f"advance={adv_em:.1f}", anchor="start"))
+            svg.append(label(0 - 0.02 * upem, 0 + 0.1 * upem, "origin x=0 ", anchor="end"))
+            svg.append(label(lsb_em + 0.02 * upem, 0 + 0.1 * upem, f"LSB={int(lsb_em)}", anchor="start"))
+            svg.append(label(adv_em + 0.02 * upem, 0 + 0.1 * upem, f"advance={int(adv_em)}", anchor="start"))
             # units per EM label
-            svg.append(label(left + 0.02 * upem, 0 + 0.15 * upem,
+            svg.append(label(left + 0.02 * upem, 0 + 0.1 * upem,
                              f"UPEM={upem}", anchor="start"))
 
     # Glyph bounding box (tightest rectangle around the glyph)

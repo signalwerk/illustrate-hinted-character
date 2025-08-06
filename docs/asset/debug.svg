@@ -55,17 +55,19 @@
 <rect x="437.500" y="-62.500" width="62.500" height="62.500" fill="rgb(225,225,225)"/>
 <line id="ascender" x1="-500.000" y1="-932.000" x2="822.000" y2="-932.000" stroke="#e0a000" stroke-width="4.000"/>
 <line id="descender" x1="-500.000" y1="189.000" x2="822.000" y2="189.000" stroke="#e0a000" stroke-width="4.000"/>
-<text x="-480.000" y="-952.000" font-size="30.000" text-anchor="start" font-family="monospace">ascender</text>
-<text x="-480.000" y="249.000" font-size="30.000" text-anchor="start" font-family="monospace">descender</text>
+<line id="x-height" x1="-500.000" y1="-520.000" x2="822.000" y2="-520.000" stroke="#e0a000" stroke-width="4.000"/>
+<text x="-480.000" y="-952.000" font-size="30.000" text-anchor="start" font-family="monospace">ascender=932</text>
+<text x="-480.000" y="229.000" font-size="30.000" text-anchor="start" font-family="monospace">descender=-189</text>
+<text x="-480.000" y="-540.000" font-size="30.000" text-anchor="start" font-family="monospace">x-height=520 (OS/2)</text>
 <line id="baseline" x1="-500.000" y1="0.000" x2="822.000" y2="0.000" stroke="#c0c0c0" stroke-width="4.000"/>
-<text x="-480.000" y="-20.000" font-size="30.000" text-anchor="start" font-family="monospace">baseline</text>
+<text x="-480.000" y="-20.000" font-size="30.000" text-anchor="start" font-family="monospace">baseline=0</text>
 <line id="origin" x1="0" y1="-932.000" x2="0" y2="189.000" stroke="#c0c0c0" stroke-width="4.000"/>
 <line id="lsb" x1="43.000" y1="-932.000" x2="43.000" y2="189.000" stroke="#00a0e0" stroke-width="4.000"/>
 <line id="advance" x1="522.000" y1="-932.000" x2="522.000" y2="189.000" stroke="#008000" stroke-width="4.000"/>
-<text x="-20.000" y="150.000" font-size="30.000" text-anchor="end" font-family="monospace">origin x=0 </text>
-<text x="63.000" y="150.000" font-size="30.000" text-anchor="start" font-family="monospace">LSB=43.0</text>
-<text x="542.000" y="150.000" font-size="30.000" text-anchor="start" font-family="monospace">advance=522.0</text>
-<text x="-480.000" y="150.000" font-size="30.000" text-anchor="start" font-family="monospace">UPEM=1000</text>
+<text x="-20.000" y="100.000" font-size="30.000" text-anchor="end" font-family="monospace">origin x=0 </text>
+<text x="63.000" y="100.000" font-size="30.000" text-anchor="start" font-family="monospace">LSB=43</text>
+<text x="542.000" y="100.000" font-size="30.000" text-anchor="start" font-family="monospace">advance=522</text>
+<text x="-480.000" y="100.000" font-size="30.000" text-anchor="start" font-family="monospace">UPEM=1000</text>
 <rect x="43.000" y="-533.000" width="405.000" height="544.000" fill="none" stroke="#cc3333" stroke-width="4.000"/>
 <text x="63.000" y="-573.000" font-size="30.000" text-anchor="start" font-family="monospace">bbox 405×544</text>
 <path d="M 256.000 -67.000 Q 289.000 -67.000 314.000 -68.000 Q 340.000 -70.000 357.000 -74.000 L 357.000 -229.000 Q 347.000 -234.000 324.000 -237.000 Q 302.000 -241.000 270.000 -241.000 Q 249.000 -241.000 225.000 -238.000 Q 202.000 -235.000 182.000 -225.000 Q 163.000 -216.000 150.000 -199.000 Q 137.000 -183.000 137.000 -156.000 Q 137.000 -106.000 169.000 -86.000 Q 201.000 -67.000 256.000 -67.000 Z M 248.000 -533.000 Q 304.000 -533.000 342.000 -518.000 Q 381.000 -504.000 404.000 -477.000 Q 428.000 -451.000 438.000 -414.000 Q 448.000 -378.000 448.000 -334.000 L 448.000 -9.000 Q 436.000 -7.000 414.000 -3.000 Q 393.000 0.000 366.000 3.000 Q 339.000 6.000 307.000 8.000 Q 276.000 11.000 245.000 11.000 Q 201.000 11.000 164.000 2.000 Q 127.000 -7.000 100.000 -26.000 Q 73.000 -46.000 58.000 -78.000 Q 43.000 -110.000 43.000 -155.000 Q 43.000 -198.000 60.000 -229.000 Q 78.000 -260.000 108.000 -279.000 Q 138.000 -298.000 178.000 -307.000 Q 218.000 -316.000 262.000 -316.000 Q 276.000 -316.000 291.000 -314.000 Q 306.000 -313.000 319.000 -310.000 Q 333.000 -308.000 343.000 -306.000 Q 353.000 -304.000 357.000 -303.000 L 357.000 -329.000 Q 357.000 -352.000 352.000 -374.000 Q 347.000 -397.000 334.000 -414.000 Q 321.000 -432.000 298.000 -442.000 Q 276.000 -453.000 240.000 -453.000 Q 194.000 -453.000 159.000 -446.000 Q 125.000 -440.000 108.000 -433.000 L 97.000 -510.000 Q 115.000 -518.000 157.000 -525.000 Q 199.000 -533.000 248.000 -533.000 Z" fill="none" stroke="#000" stroke-width="3.000" />
