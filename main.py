@@ -91,10 +91,10 @@ def glyph_em_overlay(
     layers: str = "path-original,path-hinted,bitmap-hinted,guides,bearings,bbox,labels",  # comma-separated list of layers
     output_filename: str = None,  # custom filename override (if None, auto-generates filename)
     # visual tuning (all in EM units, proportional to UPEM by default)
-    label_scale: float = 0.040,   # label font-size = UPEM * label_scale
+    label_scale: float = 0.030,   # label font-size = UPEM * label_scale
     stroke_main: float = 0.003,   # main outline stroke = UPEM * stroke_main
     stroke_guides: float = 0.004, # guides stroke = UPEM * stroke_guides
-    margin_em = 0.01,             # margins as a fraction of UPEM (float or [top,right,bottom,left])
+    margin_em = 0.0,             # margins as a fraction of UPEM (float or [top,right,bottom,left])
     bitmap_style: str = "image",  # "image", "rects", "circles"
     bitmap_opacity: float = 1,  # opacity for bitmap layer (0.0 – 1.0)
     bitmap_scale: float = 1,  # scale factor for bitmap pixels (0.9 makes them 90% size, centered)
@@ -535,12 +535,12 @@ def glyph_em_overlay(
 
         # Ascender line (maximum height for tall letters like 'h', 'k')
         svg.append(
-            f'<line x1="{left:.3f}" y1="{-asc_em:.3f}" x2="{right:.3f}" y2="{-asc_em:.3f}" '
+            f'<line id="ascender" x1="{left:.3f}" y1="{-asc_em:.3f}" x2="{right:.3f}" y2="{-asc_em:.3f}" '
             f'stroke="#e0a000" stroke-width="{sw_guid:.3f}"/>'
         )
         # Descender line (minimum depth for letters like 'g', 'p')
         svg.append(
-            f'<line x1="{left:.3f}" y1="{-desc_em:.3f}" x2="{right:.3f}" y2="{-desc_em:.3f}" '
+            f'<line id="descender" x1="{left:.3f}" y1="{-desc_em:.3f}" x2="{right:.3f}" y2="{-desc_em:.3f}" '
             f'stroke="#e0a000" stroke-width="{sw_guid:.3f}"/>'
         )
         if "labels" in layer_set:
@@ -550,7 +550,7 @@ def glyph_em_overlay(
     # Baseline (Y=0, where most letters sit)
     if "baseline" in layer_set:
         svg.append(
-            f'<line x1="{left:.3f}" y1="{0:.3f}" x2="{right:.3f}" y2="{0:.3f}" '
+            f'<line id="baseline" x1="{left:.3f}" y1="{0:.3f}" x2="{right:.3f}" y2="{0:.3f}" '
             f'stroke="#c0c0c0" stroke-width="{sw_guid:.3f}"/>'
         )
         if "labels" in layer_set:
@@ -560,23 +560,26 @@ def glyph_em_overlay(
     if "bearings" in layer_set:
         # Origin line (X=0, glyph positioning reference)
         svg.append(
-            f'<line x1="0" y1="{-asc_em:.3f}" x2="0" y2="{-desc_em:.3f}" '
+            f'<line id="origin" x1="0" y1="{-asc_em:.3f}" x2="0" y2="{-desc_em:.3f}" '
             f'stroke="#c0c0c0" stroke-width="{sw_guid:.3f}"/>'
         )
         # Left side bearing line (where glyph content begins)
         svg.append(
-            f'<line x1="{lsb_em:.3f}" y1="{-asc_em:.3f}" x2="{lsb_em:.3f}" y2="{-desc_em:.3f}" '
+            f'<line id="lsb" x1="{lsb_em:.3f}" y1="{-asc_em:.3f}" x2="{lsb_em:.3f}" y2="{-desc_em:.3f}" '
             f'stroke="#00a0e0" stroke-width="{sw_guid:.3f}"/>'
         )
         # Advance width line (where next glyph would start)
         svg.append(
-            f'<line x1="{adv_em:.3f}" y1="{-asc_em:.3f}" x2="{adv_em:.3f}" y2="{-desc_em:.3f}" '
+            f'<line id="advance" x1="{adv_em:.3f}" y1="{-asc_em:.3f}" x2="{adv_em:.3f}" y2="{-desc_em:.3f}" '
             f'stroke="#008000" stroke-width="{sw_guid:.3f}"/>'
         )
         if "labels" in layer_set:
-            svg.append(label(0, -asc_em - 0.04 * upem, "origin x=0", anchor="middle"))
-            svg.append(label(lsb_em, -asc_em - 0.04 * upem, f"LSB={lsb_em:.1f} em-units", anchor="middle"))
-            svg.append(label(adv_em, -asc_em - 0.04 * upem, f"advance={adv_em:.1f} em-units", anchor="middle"))
+            svg.append(label(0 - 0.02 * upem, 0 + 0.15 * upem, "origin x=0 ", anchor="end"))
+            svg.append(label(lsb_em + 0.02 * upem, 0 + 0.15 * upem, f"LSB={lsb_em:.1f}", anchor="start"))
+            svg.append(label(adv_em + 0.02 * upem, 0 + 0.15 * upem, f"advance={adv_em:.1f}", anchor="start"))
+            # units per EM label
+            svg.append(label(left + 0.02 * upem, 0 + 0.15 * upem,
+                             f"UPEM={upem}", anchor="start"))
 
     # Glyph bounding box (tightest rectangle around the glyph)
     if "bbox" in layer_set:
@@ -585,8 +588,8 @@ def glyph_em_overlay(
             f'fill="none" stroke="#cc3333" stroke-width="{sw_guid:.3f}"/>'
         )
         if "labels" in layer_set:
-            svg.append(label(lsb_em + 0.02 * upem, -top_em + 0.06 * upem,
-                             f"bbox {width_em:.0f}×{height_em:.0f} em-units"))
+            svg.append(label(lsb_em + 0.02 * upem, -top_em - 0.04 * upem,
+                             f"bbox {width_em:.0f}×{height_em:.0f}"))
 
     # Vector outline paths (main content)
     if "path-original" in layer_set:
@@ -607,36 +610,36 @@ def glyph_em_overlay(
         ly = -asc_em + 0.10 * upem
         
         if "path-original" in layer_set:
-            svg.append(label(lx + 0.1 * upem, ly, "original outline", anchor="start"))
+            svg.append(label(left + 0.1 * upem, ly, "original outline", anchor="start"))
             svg.append(
-                f'<line x1="{lx:.3f}" y1="{ly - 0.02 * upem:.3f}" '
-                f'x2="{lx + 0.05 * upem:.3f}" y2="{ly - 0.02 * upem:.3f}" '
+                f'<line x1="{(left + 0.02 * upem):.3f}" y1="{ly - 0.02 * upem:.3f}" '
+                f'x2="{left + 0.07 * upem:.3f}" y2="{ly - 0.02 * upem:.3f}" '
                 f'{path_original_style} />'
             )
             ly += 0.08 * upem
             
         if "path-hinted" in layer_set:
-            svg.append(label(lx + 0.1 * upem, ly, "hinted outline", anchor="start"))
+            svg.append(label(left + 0.1 * upem, ly, "hinted outline", anchor="start"))
             svg.append(
-                f'<line x1="{lx:.3f}" y1="{ly - 0.02 * upem:.3f}" '
-                f'x2="{lx + 0.05 * upem:.3f}" y2="{ly - 0.02 * upem:.3f}" '
+                f'<line x1="{(left + 0.02 * upem):.3f}" y1="{ly - 0.02 * upem:.3f}" '
+                f'x2="{left + 0.07 * upem:.3f}" y2="{ly - 0.02 * upem:.3f}" '
                 f'{path_hinted_style} />'
             )
             ly += 0.08 * upem
             
         if "bitmap-hinted" in layer_set:
-            svg.append(label(lx + 0.1 * upem, ly, "bitmap hinted", anchor="start"))
+            svg.append(label(left + 0.1 * upem, ly, "bitmap hinted", anchor="start"))
             svg.append(
-                f'<rect x="{lx:.3f}" y="{ly - 0.04 * upem:.3f}" '
+                f'<rect x="{(left + 0.02 * upem):.3f}" y="{ly - 0.04 * upem:.3f}" '
                 f'width="{0.05 * upem:.3f}" height="{0.05 * upem:.3f}" '
                 f'fill="#000" fill-opacity="0.4" stroke="none"/>'
             )
             ly += 0.08 * upem
             
         if "bitmap-original" in layer_set:
-            svg.append(label(lx + 0.1 * upem, ly, "bitmap unhinted", anchor="start"))
+            svg.append(label(left + 0.1 * upem, ly, "bitmap unhinted", anchor="start"))
             svg.append(
-                f'<rect x="{lx:.3f}" y="{ly - 0.04 * upem:.3f}" '
+                f'<rect x="{(left + 0.02 * upem):.3f}" y="{ly - 0.04 * upem:.3f}" '
                 f'width="{0.05 * upem:.3f}" height="{0.05 * upem:.3f}" '
                 f'fill="#000" fill-opacity="0.6" stroke="none"/>'
             )
@@ -762,5 +765,6 @@ if __name__ == "__main__":
         ppem=ppem, hinting_target="normal",
         layers="path-original,path-hinted,bitmap-hinted,guides,baseline,bearings,bbox,labels",
         bitmap_style="rects",
+        margin_em=[.1,0.3,0.1,0.5],
     )
     print("Wrote file:", info["out_svg"])

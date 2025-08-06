@@ -13,11 +13,6 @@
         The following images show how font hinting affects glyph outlines and
         their pixel rendering.
       </p>
-      <p class="technical-details">
-        All images were generated with Freetype version 2.13.1. The font Ubuntu
-        Regular (Version 0.83) used in this examples can also be found at the
-        <a target="_blank" href="https://design.ubuntu.com/font">Canonical Design Guide</a>
-      </p>
     </header>
     <main>
       <div class="container">
@@ -25,8 +20,7 @@
           <div class="col-12">
             <h2>Outline and bitmap (monochrome) rendering with no hinting</h2>
             <p class="technical-details">
-              Font: Ubuntu Regular · Size: 16 px (16 ppem) · Hinting:
-              off
+              Font: Ubuntu Regular · Size: 16 px (16 ppem) · Hinting: off
             </p>
           </div>
           <div class="col-6">
@@ -45,8 +39,8 @@
           <div class="col-12">
             <h2>Outline and bitmap (monochrome) rendering with hinting</h2>
             <p class="technical-details">
-              Font: Ubuntu Regular · Size: 16 px (16 ppem) · Hinting:
-              on (dotted blue outline + bitmap)
+              Font: Ubuntu Regular · Size: 16 px (16 ppem) · Hinting: on (dotted
+              blue outline + bitmap)
             </p>
           </div>
           <div class="col-6">
@@ -70,8 +64,8 @@
               Outline and bitmap (grayscale) rendering without and with hinting
             </h2>
             <p class="technical-details">
-              Font: Ubuntu Regular · Size: 16 px (16 ppem) · Hinting:
-              off (left) and on (right)
+              Font: Ubuntu Regular · Size: 16 px (16 ppem) · Hinting: off (left)
+              and on (right)
             </p>
           </div>
           <div class="col-6">
@@ -92,14 +86,32 @@
         <div class="row">
           <div class="col-12">
             <h2>View of the glyphs structure and metrics</h2>
+            <p class="technical-details">Numbers in em-units.</p>
           </div>
         </div>
         <div class="row">
-          <div class="col-3">
+          <div class="col-12">
             <img src="asset/debug.svg" alt="Glyph structure and metrics" />
           </div>
         </div>
       </div>
     </main>
+    <footer>
+      <p class="technical-details">
+        All images were generated with Freetype version 2.13.1. The font Ubuntu
+        Regular (Version 0.83) used in this examples can also be found at the
+        <a target="_blank" href="https://design.ubuntu.com/font"
+          >Canonical Design Guide</a
+        >
+      </p>
+      <p class="technical-details">
+        The script to generate the images is available on
+        <a
+          target="_blank"
+          href="https://github.com/signalwerk/illustrate-hinted-character"
+          >GitHub</a
+        >
+      </p>
+    </footer>
   </body>
 </html>

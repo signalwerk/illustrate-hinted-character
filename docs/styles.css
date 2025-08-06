@@ -66,6 +66,7 @@ h6 {
 
 h1 {
   font-size: 1.2rem;
+  margin-bottom: 1.5rem;
 }
 
 h2 {
@@ -114,21 +115,32 @@ small {
 }
 
 .container {
-  margin-top: 2rem;
+  margin-top: 1rem;
 }
 
 header,
-main {
+main,
+footer {
   width: 92%;
   max-width: 38rem;
   margin-left: auto;
   margin-right: auto;
 }
 
+header,
+footer {
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+}
+
 .row {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
   grid-column-gap: 1.5rem;
+}
+
+.row > * {
+  margin-bottom: 1rem;
 }
 
 .col-12 {
